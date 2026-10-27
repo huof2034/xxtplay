@@ -1,13 +1,14 @@
 # xxtplay 项目交接
 
-更新时间：2026-10-27。项目目录：`D:\xxtplay`。当前版本：`0.3.0`。
+更新时间：2026-10-27。项目目录：`D:\xxtplay`。当前版本：`0.4.0`。
 
 ## 当前状态
 
-- 交接文档、源码、测试与真实页面样本已检查。`npm run check` 通过：TypeScript、55 项单元测试、构建、24 项 Playwright 模拟页面测试。
+- 交接文档、源码、测试与真实页面样本已检查。`npm run check` 通过：TypeScript、59 项单元测试、构建、26 项 Playwright 模拟页面测试。
 - 自动播放问题已修复：优先静音开始，区分浏览器策略拒绝（`NotAllowedError`）与播放器加载中断（`AbortError`），失败时在视频内显示一次性点击提示，不再直接停摆。
 - 新增播放自动化：未加载的任务点会自动滚动并点击打开；平台 `doublespeed` 允许时自动倍速（默认 2×）；平台 `fastforward` 允许且无「不可拖拽」提示时自动跳到结尾；完成仍以平台回执为准。
 - 设置面板支持拖动标题栏移动并记住位置，双击标题栏恢复右下角；新增「播放」设置页。
+- 新增学习通首页课程总览：读取全部课程与任务点进度、可在面板勾选；首页开始队列会自动打开第一门勾选课程。运行任务卡显示课程名、章节、类型和「打开页面」链接。
 - AI 设置已支持服务商与模型选择：DeepSeek、通义千问（阿里云百炼）、Kimi、自定义 OpenAI 兼容接口；文本/视觉模型可下拉选择或手填，视觉模型可留空。
 - 已补齐中文 `README.md`、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`CHANGELOG.md`、`docs/ACCEPTANCE.md` 和 `scripts/package.mjs`。
 - 已初始化 Git（`main`），发布资产位于被忽略的 `release/`。远端的 `huof2034/xxtplay` 尚未创建/发布。
@@ -24,15 +25,15 @@
 
 ## 已完成
 
-- TypeScript + esbuild，产物为 `dist/xxtplay.user.js` 和 `dist/xxtplay.meta.js`；版本 `0.3.0`。
+- TypeScript + esbuild，产物为 `dist/xxtplay.user.js` 和 `dist/xxtplay.meta.js`；版本 `0.4.0`。
 - 课程队列、页面及跨 iframe 适配、媒体和效率规则、题型处理、AI 接口、复习整理、考试确认、跨标签页租约、中文面板。
 - 自动播放策略处理位于 `src/core/playback.ts`：优先 video.js 播放器 API，失败回退原生元素；策略拒绝时静音重试；`AbortError` 等待媒体就绪后重试；极端策略下显示提示条并等待一次点击；不会伪造用户手势或修改浏览器启动参数。
 - AI 服务商目录位于 `src/ai/providers.ts`，旧配置会自动推断 provider。面板支持模型下拉+自定义；切换服务商必须重填 Key；视觉模型为空时图片题保留待办，不发送请求。
 - 使用 OCS 的 MIT 许可部分代码，固定提交 `da5c0775a9d055724149ff505eae75bd85d334f9`；引用内容位于 `src/vendor/ocs/`，许可及来源映射位于 `licenses/`。ChaoXing-AutoAnswer 和 Samueli924/chaoxing 仅用于调查参考，不应声称复制了它们的代码。
-- 最近一次 `npm run check`（`PW_CHANNEL=chrome`）：TypeScript 通过、55 项单元测试、构建、24 项 Playwright 模拟页面测试通过。模拟页面不证明真实课程、真实 AI 服务或真实提交已完整验证。
+- 最近一次 `npm run check`（`PW_CHANNEL=chrome`）：TypeScript 通过、59 项单元测试、构建、26 项 Playwright 模拟页面测试通过。模拟页面不证明真实课程、真实 AI 服务或真实提交已完整验证。
 - 发布资产：`npm run package` 生成 `release/xxtplay.user.js`、`release/xxtplay.meta.js`、说明文件与 `SHA256SUMS.txt`。当前脚本 SHA-256：
-  - `xxtplay.user.js`：`98F9A80EB54D87D62CDF41C151E0BC06EB1C41ECA193DAAD00E4BCC637761B75`
-  - `xxtplay.meta.js`：`347C2B72D37A4D422F5906863CE38880416D375442427BBBA1E17BA2B10E9A63`
+  - `xxtplay.user.js`：`585FBF18F94A62D1E9361E281446A5AE6BFAD78920A429B40A0C45ABD6210298`
+  - `xxtplay.meta.js`：`045C208F26C7435BBEF7A75333F5F7E0ADE37ABDA6341246FE0F218634C0A37A`
 - 这是本地构建文件的哈希，未独立核对油猴中已安装副本；重新构建后须重新计算并更新 `docs/ACCEPTANCE.md`。
 - 用户此前已安装 Tampermonkey、允许运行用户脚本并在真实课程页面看到 xxtplay 面板；用户反馈视频已播放且完成一个任务点。本次修复后需要用户重新安装/更新脚本才能生效，该现场反馈尚未独立核验。
 
@@ -55,7 +56,7 @@
 2. 按 5 分钟要求观察：将课程标签页置于后台，记录起止时间、播放进度、平台状态、面板日志与 AI 调用次数（播放期间应为 0）；浏览器冻结页面或系统休眠时脚本不能继续运行。不要把单个任务点反馈误写为五分钟后台测试已通过。
 3. 真实课程题目、讨论、复习和 AI 接口尚需逐项验证；用户需在脚本设置中自行输入 API Key，**不要索取、读取、打印或导出密钥**。模拟测试不能替代真实平台回执。
 4. 持续核查考试安全：用户确认前提交请求为零，确认只对当前考试、本次提交生效，刷新或异常重试不能自动交卷；真实考试只在用户主动开始后处理。
-5. **公开发布**：`gh auth status` 目前未登录，`huof2034/xxtplay` 匿名访问 404。需要用户执行 `gh auth login` 并确认账号/仓库后再创建公开仓库、推送 `main` 与 `v0.3.0` 标签、上传 `release/*`；随后匿名下载核对 SHA-256 与 `@updateURL`。未登录时不要试图创建仓库或上传。
+5. **公开发布**：`gh auth status` 目前未登录，`huof2034/xxtplay` 匿名访问 404。需要用户执行 `gh auth login` 并确认账号/仓库后再创建公开仓库、推送 `main` 与 `v0.4.0` 标签、上传 `release/*`；随后匿名下载核对 SHA-256 与 `@updateURL`。未登录时不要试图创建仓库或上传。
 6. 检查发布包与 Git 追踪内容，排除密钥、私人课程数据、`.local/`、`.cache/`、`node_modules/`、`test-results/`、`dsh-usage/` 和个人日志。最终仅清理已确认由本项目产生且不再需要的临时文件；不要误删用户文件。
 
 ## 环境与隐私注意

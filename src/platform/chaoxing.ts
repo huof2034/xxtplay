@@ -1,8 +1,9 @@
 /*! Chaoxing selectors / attachment mapping adapted from OCS cx.ts, MIT, (c) 2022 enncy and contributors; upstream da5c0775a9d055724149ff505eae75bd85d334f9. */
 import html2canvas from 'html2canvas';
-import type { Answer, Course, Question, QuestionKind, TaskKind, WatchRequirement } from '../types';
+import type { Answer, Course, CourseProgress, Question, QuestionKind, TaskKind, WatchRequirement } from '../types';
 import type { QuestionHandle } from '../core/question-worker';
 import { parseWatchRequirement } from '../core/efficiency';
+import { parseCourseCards, parseCourseListHtml, parseCourseProgressHtml, progressFromDocument, type CatalogEntry } from './courses';
 import { normalizeText, safeUrl, shortHash, sleep, sourceLink } from '../utils';
 
 type SiteWindow = Window & Record<string, any>;
@@ -77,6 +78,57 @@ export class ChaoxingAdapter {
   private chapterElements = new Map<string, HTMLElement>();
   private lastTaskOpenKey = ''; private lastTaskOpenAt = 0;
   constructor(readonly doc: Document = document, win = publicWindow()) { this.win = win; }
+  siteFid(): string | undefined {
+    for (const win of relatedWindows(this.win)) {
+      try {
+        const direct = (win as any).fid ?? (win as any)._fid ?? win.document.querySelector<HTMLInputElement>('#fid,input[name="fid"]')?.value;
+        if (/^\d+$/.test(String(direct || ''))) return String(direct);
+        const html = win.document.documentElement.innerHTML;
+        const match = /"fid"\s*:\s*"?(\d+)"?/.exec(html) || /var fid\s*=\s*'(\d+)'/.exec(html);
+        if (match) return match[1];
+      } catch { /* Cross-origin frames are skipped. */ }
+    }
+    return undefined;
+  }
+  courseCards(): CatalogEntry[] { return parseCourseCards(this.doc); }
+  async loadCatalog(): Promise<CatalogEntry[]> {
+    const fid = this.siteFid(); if (!fid) return [];
+    const html = await gmGet(`https://mooc2-ans.chaoxing.com/mooc2-ans/visit/courselistdata?courseType=1&courseFid=${encodeURIComponent(fid)}&courseTeacherid=0&courseOrderBy=0`);
+    return parseCourseListHtml(html);
+  }
+  async loadProgress(course: Course): Promise<CourseProgress | undefined> {
+    const middleUrl = new URL('https://mooc1.chaoxing.com/visit/stucoursemiddle');
+    middleUrl.searchParams.set('courseid', course.id); middleUrl.searchParams.set('clazzid', course.classId);
+    if (course.cpi) middleUrl.searchParams.set('cpi', course.cpi);
+    middleUrl.searchParams.set('ismooc2', '1'); middleUrl.searchParams.set('v', '2');
+    const middle = await gmGet(middleUrl.href);
+    const enc = hiddenInput(middle, 'enc'); const openc = hiddenInput(middle, 'openc');
+    if (!enc) return undefined;
+    const chapterUrl = new URL('https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/studentcourse');
+    chapterUrl.searchParams.set('courseid', course.id); chapterUrl.searchParams.set('clazzid', course.classId);
+    if (course.cpi) chapterUrl.searchParams.set('cpi', course.cpi);
+    chapterUrl.searchParams.set('enc', enc); chapterUrl.searchParams.set('openc', openc);
+    chapterUrl.searchParams.set('fromMiddle', '1'); chapterUrl.searchParams.set('ut', 's'); chapterUrl.searchParams.set('t', String(Date.now()));
+    return parseCourseProgressHtml(await gmGet(chapterUrl.href));
+  }
+  localProgress(): CourseProgress | undefined {
+    const direct = progressFromDocument(this.doc); if (direct) return direct;
+    for (const win of relatedWindows(this.win)) {
+      try {
+        const found = progressFromDocument(win.document); if (found) return found;
+        for (const frame of win.document.querySelectorAll<HTMLIFrameElement>('iframe')) {
+          try { const nested = frame.contentDocument && progressFromDocument(frame.contentDocument); if (nested) return nested; } catch { /* Cross-origin iframe. */ }
+        }
+      } catch { /* Cross-origin window. */ }
+    }
+    return undefined;
+  }
+  studyUrl(): string {
+    for (const win of relatedWindows(this.win)) {
+      try { if (/\/mycourse\/studentstudy/.test(win.location.href)) return sourceLink(win.location.href); } catch { /* Cross-origin. */ }
+    }
+    return sourceLink(this.doc.URL);
+  }
   isExam(): boolean {
     return this.inheritedExam || localExam(this.doc) || relatedWindows(this.win).some(win => localExam(win.document));
   }
@@ -196,7 +248,12 @@ export class ChaoxingAdapter {
     if (!el || !visible(el) || this.isExam()) return false;
     el.click(); return true;
   }
-  chapterTitle(): string { return text(this.doc.querySelector('.posCatalog_active,.chapter-title,.chapter_name')) || this.doc.title; }
+  chapterTitle(): string {
+    for (const win of relatedWindows(this.win)) {
+      try { const title = text(win.document.querySelector('.posCatalog_active,.chapter-title,.chapter_name')); if (title) return title; } catch { /* Cross-origin parent. */ }
+    }
+    return this.doc.title;
+  }
   private cardsDocument(): Document | undefined {
     for (const frame of this.doc.querySelectorAll<HTMLIFrameElement>('#iframe,iframe[src*="knowledge/cards"],iframe[src*="knowledge/card"]')) {
       try { if (frame.contentDocument?.body) return frame.contentDocument; } catch { /* Cross-origin cards cannot be opened from here. */ }
@@ -349,6 +406,24 @@ export class ChaoxingAdapter {
     const items = [...this.doc.querySelectorAll<HTMLElement>('button,a,input[type="button"]')].filter(el => visible(el) && /^(?:发布|发表|回复|提交回复)$/.test(text(el) || (el as HTMLInputElement).value));
     return items.length === 1 ? items[0] : undefined;
   }
+}
+function gmGet(url: string): Promise<string> {
+  if (typeof GM_xmlhttpRequest !== 'function') return Promise.reject(new Error('当前环境不支持跨域读取课程页面'));
+  return new Promise((resolve, reject) => {
+    GM_xmlhttpRequest({
+      method: 'GET', url, anonymous: false, timeout: 20_000,
+      onload: response => response.status >= 200 && response.status < 300
+        ? resolve(response.responseText)
+        : reject(new Error(`课程页面 HTTP ${response.status}`)),
+      onerror: () => reject(new Error('课程页面读取失败，请检查网络或油猴域名授权')),
+      ontimeout: () => reject(new Error('课程页面读取超时')),
+    });
+  });
+}
+function hiddenInput(html: string, id: string): string {
+  const after = new RegExp(`id="${id}"[^>]*value="([^"]*)"`).exec(html);
+  const before = new RegExp(`value="([^"]*)"[^>]*id="${id}"`).exec(html);
+  return after?.[1] || before?.[1] || '';
 }
 function fieldValue(el: HTMLElement): string { return 'value' in el ? String((el as HTMLInputElement).value) : el.textContent || ''; }
 export function setInput(el: HTMLElement, value: string): void {

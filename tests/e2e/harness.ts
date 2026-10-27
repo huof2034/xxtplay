@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course, type PlaybackConfig } from '../../src/types';
 
-export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; playback?: Partial<PlaybackConfig> }
+export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; playback?: Partial<PlaybackConfig> }
 export interface Harness {
   page: Page; context: BrowserContext; values: Map<string, any>; apiCalls: { body: any; purpose: string }[]; submissions: { jobId: string; kind: string }[];
   state(): AccountState; close(): Promise<void>;
@@ -81,6 +81,15 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
   await context.route('https://*.chaoxing.com/**', async route => {
     const u = new URL(route.request().url()); const id = u.searchParams.get('courseId') || u.searchParams.get('courseid') || '100'; const jobId = `job-${id}`;
     if (u.pathname === '/fixture.webm') { await route.fulfill({ contentType: 'video/webm', body: media }); return; }
+    if (options.mode === 'home' && u.pathname === '/base') {
+      await route.fulfill({ contentType: 'text/html', body: shell(`<input id="userId" value="111" type="hidden">
+        <div class="course-card"><a href="https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=100&clazzid=200&cpi=300"><span class="course-name" title="测试课程甲">测试课程甲</span></a><p class="line2 color3" title="张老师">张老师</p><div>已完成任务点 1/2</div></div>
+        <div class="course-card"><a href="https://mooc1.chaoxing.com/visit/stucoursemiddle?courseid=101&clazzid=201&cpi=301"><span class="course-name" title="测试课程乙">测试课程乙</span></a><div>已完成任务点 0/3</div></div>`) });
+      return;
+    }
+    if (options.mode === 'home' && u.pathname.includes('/mycourse/stu')) {
+      await route.fulfill({ contentType: 'text/html', body: shell('<input id="userId" value="111" type="hidden"><h1>测试课程甲</h1>') }); return;
+    }
     if (options.embeddedExam && u.pathname.includes('/exam/test/')) {
       await route.fulfill({ contentType: 'text/html', body: shell('<input id="userId" value="111" type="hidden"><h1>考试外层页面</h1><iframe src="https://mooc1.chaoxing.com/work/doHomeWorkNew?workId=900&courseId=100&clazzid=200"></iframe>') }); return;
     }
@@ -115,8 +124,8 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
     await route.fulfill({ contentType: 'text/html', body: shell(`<input id="userId" value="111" type="hidden"><h1>${exam ? '测试考试' : '测试作业'}</h1>${questionHtml(options.unknownQuestion)}${button}`, `document.querySelector('#${submitId}').onclick=()=>document.querySelector('[role=dialog]').style.display='block';document.querySelector('#confirm').onclick=()=>{void window.__fixtureSubmit('${jobId}','${exam ? 'exam' : 'quiz'}');document.querySelector('[role=dialog]').style.display='none';${options.noReceipt ? '' : "document.querySelector('.testTit_status').textContent='已提交';document.querySelector('.testTit_status').classList.add('testTit_status_complete')"}};`) });
   });
   const page = await context.newPage();
-  const routePath = options.mode === 'exam' ? '/mooc-ans/exam/test/reVersionTestStartNew?examId=55&courseId=100&clazzid=200' : options.mode === 'discussion' ? '/bbs/discuss?courseId=100&clazzid=200' : '/mycourse/studentstudy?courseId=100&clazzid=200&chapterId=10';
-  const host = options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';
+  const routePath = options.mode === 'home' ? '/base' : options.mode === 'exam' ? '/mooc-ans/exam/test/reVersionTestStartNew?examId=55&courseId=100&clazzid=200' : options.mode === 'discussion' ? '/bbs/discuss?courseId=100&clazzid=200' : '/mycourse/studentstudy?courseId=100&clazzid=200&chapterId=10';
+  const host = options.mode === 'home' ? 'https://i.chaoxing.com' : options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';
   await page.goto(host + routePath); await expect(page.locator('#xxtplay-root')).toBeAttached({ timeout: 20_000 });
   return { page, context, values, apiCalls, submissions, state: () => values.get(ACCOUNT_KEY), close: async () => { await context.close(); } };
 }

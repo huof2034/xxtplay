@@ -9,9 +9,13 @@ export interface PlaybackConfig { autoOpen: boolean; autoSpeed: boolean; speed: 
 export interface GlobalConfig {
   version: 1; ai: AiConfig; playback: PlaybackConfig; notifications: boolean; muted: boolean;
 }
+export interface CourseProgress {
+  done?: number; total?: number; percent: number; text: string; updatedAt: number;
+}
 export interface Course {
   id: string; classId: string; cpi: string; key: string; title: string; url: string;
   enabled: boolean; efficiencyMode: boolean; summaryEnabled: boolean; order: number;
+  teacher?: string; progress?: CourseProgress;
 }
 export interface WatchCondition { kind: 'seconds' | 'ratio'; value: number; source: string; scope: string }
 export interface WatchRequirement {
@@ -19,7 +23,7 @@ export interface WatchRequirement {
 }
 export interface TaskRecord {
   id: string; courseKey: string; title: string; kind: TaskKind; status: TaskStatus;
-  url: string; updatedAt: number; attempts: number; reason?: string; receipt?: string;
+  url: string; chapter?: string; updatedAt: number; attempts: number; reason?: string; receipt?: string;
   progress?: { current: number; duration: number; requirement: WatchRequirement; watched?: number };
   answers?: { id: string; title: string; filled: boolean; error?: string; answer?: Answer }[];
 }

@@ -130,6 +130,26 @@ test('设置面板可拖动并记住位置', async ({ context }) => {
   const position = h.values.get('xxtplay:v1:ui:position');
   expect(position.left).toBeGreaterThan(0); expect(position.top).toBeGreaterThan(0);
 });
+test('首页读取全部课程、进度并允许勾选', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'home', autoRun: false });
+  const panel = h.page.locator('#xxtplay-root');
+  await expect(panel.getByLabel('选择课程 测试课程甲')).toBeVisible();
+  await expect(panel.getByText('已完成任务点 1/2 · 50%')).toBeVisible();
+  await expect(panel.getByText('已完成任务点 0/3 · 0%')).toBeVisible();
+  await panel.getByLabel('选择课程 测试课程甲').check();
+  await expect.poll(() => h.state().courses.find(c => c.title === '测试课程甲')?.enabled).toBe(true);
+  await panel.getByRole('button', { name: '开始队列' }).click();
+  await expect(h.page).toHaveURL(/mycourse\/(?:studentstudy|stu)\?course(?:i|I)d=100/, { timeout: 15_000 });
+});
+test('运行队列显示课程名称、章节和打开链接', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue' });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
+  await h.page.getByRole('button', { name: '运行', exact: true }).click();
+  const card = h.page.locator('#xxtplay-root .card').filter({ hasText: '测试视频' }).first();
+  await expect(card).toContainText('测试课程甲');
+  await expect(card).toContainText('第一章');
+  await expect(card.getByRole('link', { name: '打开页面' })).toHaveAttribute('href', /studentstudy/);
+});
 test('播放设置可修改并立即保存', async ({ context }) => {
   const h = await createHarness(context, { mode: 'quiz', autoRun: false });
   await h.page.getByRole('button', { name: '播放', exact: true }).click();

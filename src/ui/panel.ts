@@ -5,7 +5,7 @@ import { completionUrl } from '../ai/client';
 import { downloadText, errorMessage } from '../utils';
 import { requirementLabel } from '../core/efficiency';
 
-export interface PanelActions { start(): void; stop(): void; retry(): void; scan(): void; summarize(courseKey: string): Promise<void>; exportNote(courseKey: string): void }
+export interface PanelActions { start(): void; stop(): void; retry(): void; scan(): void; refresh(): Promise<void>; summarize(courseKey: string): Promise<void>; exportNote(courseKey: string): void }
 const CSS = `
 :host{all:initial;font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;color:#25324a;position:fixed;right:20px;bottom:20px;z-index:2147483645;color-scheme:light}
 *{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #dbe2ef;border-radius:8px;background:white;color:#344366;padding:7px 11px}button:hover{background:#edf1ff}button:disabled{cursor:default;opacity:.5}button.primary{background:#5065d9;border-color:#5065d9;color:white}button.danger{color:#bb3d4a}.panel{width:390px;max-width:calc(100vw - 32px);border-radius:16px;box-shadow:0 12px 60px #23305240;border:1px solid #e1e6f1;background:#f7f9fd;overflow:hidden}.head{background:#fff;padding:15px 17px;display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none}.brand{font-size:16px;font-weight:700;letter-spacing:.3px}.version{font-size:11px;color:#96a0b4;margin-left:7px}.tabs{display:flex;border-bottom:1px solid #e2e8f2;padding:0 12px;background:#fff}.tabs button{border:0;border-radius:0;padding:10px 13px;color:#8490a9;background:transparent}.tabs button.active{color:#5065d9;border-bottom:2px solid #5065d9;font-weight:600}.body{padding:14px;max-height:65vh;overflow:auto}.card{padding:12px;border:1px solid #e0e6f0;border-radius:10px;background:white;margin:0 0 10px}.muted{color:#8490a9;font-size:12px}.hint{background:#edf1ff;border-radius:8px;padding:9px 10px;color:#586891;font-size:12px;margin-bottom:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.spread{justify-content:space-between}.course-title{font-weight:600;overflow-wrap:anywhere;max-width:280px}.options{margin-top:10px;display:flex;gap:16px}.options label{display:flex;gap:5px;align-items:center;font-size:12px}label{cursor:pointer}input[type=checkbox]{accent-color:#586bdd}input[type=text],input[type=password],input[type=url],select{width:100%;background:#f8faff;border:1px solid #dce3ef;border-radius:7px;padding:8px 10px;color:#263859;outline:none}input:focus,select:focus{border-color:#667ce3}select{padding-right:26px}.field [hidden]{display:none}.provider-note{margin:-2px 0 8px;color:#8490a9;font-size:12px;line-height:1.5}.link{color:#5065d9;text-decoration:none;font-size:12px}.link:hover{text-decoration:underline}.field{display:block;margin:0 0 11px}.field span{display:block;margin:0 0 4px;color:#62708b;font-size:12px}.toolbar{display:flex;gap:8px;margin-bottom:12px}.toolbar button{flex:1}.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;background:#edf1fb;color:#6b7b9b}.status{font-size:13px;font-weight:600}.warning{color:#b16d20}.success{color:#267e63}.error{color:#bd4351}.log{padding:6px 0;border-bottom:1px solid #eef1f8;font-size:12px;overflow-wrap:anywhere}.log time{color:#9aa5ba;margin-right:7px}.small-button{padding:1px 6px;font-size:12px}.footer{padding:10px 14px;border-top:1px solid #e3e8f0;font-size:11px;color:#97a2b6;background:#fff}.bubble{background:#5065d9;color:white;box-shadow:0 5px 24px #465ccd55;border:0;padding:11px 17px;border-radius:22px;font-weight:600}pre{white-space:pre-wrap;word-break:break-word;font:12px/1.65 inherit;margin:7px 0}.meter{height:5px;background:#e9edf7;border-radius:4px;margin:8px 0;overflow:hidden}.meter>div{background:#6479e1;height:100%}.empty{text-align:center;color:#96a0b4;padding:22px 10px}.ack{display:flex;gap:8px;margin:12px 0}.exam{border-top:4px solid #e7ac56}.exam h3{margin:0 0 8px;font-size:15px}.exam .body{max-height:60vh}.notice{white-space:pre-wrap;overflow-wrap:anywhere}
@@ -13,6 +13,7 @@ const CSS = `
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, content = '', className = ''): HTMLElementTagNameMap[K] { const el = document.createElement(tag); if (content) el.textContent = content; if (className) el.className = className; return el; }
 function button(title: string, action: () => unknown, cls = ''): HTMLButtonElement { const b = element('button', title, cls); b.type = 'button'; b.addEventListener('click', () => { void action(); }); return b; }
 const STATUS: Record<string, string> = { queued: '等待运行', running: '正在运行', pending: '待办', 'waiting-human': '等待人工', 'awaiting-confirmation': '等待人工交卷', 'submitted-unverified': '提交结果待核验', completed: '平台已确认完成' };
+const KIND: Record<string, string> = { video: '视频', audio: '音频', document: '文档', quiz: '题目', discussion: '讨论', exam: '考试', unsupported: '未适配' };
 
 export class Panel {
   private host = element('div'); private root: ShadowRoot; private container = element('div', '', 'panel'); private body = element('div', '', 'body'); private tab = 'courses'; private collapsed = false; private scheduled = false;
@@ -43,8 +44,8 @@ export class Panel {
     this.body.replaceChildren(); const state = this.repo.state();
     if (this.notice) this.body.append(element('div', this.notice, 'hint notice'));
     if (this.tab === 'courses') {
-      const bar = element('div', '', 'toolbar'); bar.append(button(state.autoRun ? '队列已开启' : '开始队列', () => this.actions.start(), 'primary'), button('暂停', () => this.actions.stop()), button('识别课程', () => this.actions.scan())); this.body.append(bar);
-      this.body.append(element('div', '先勾选课程。效率模式按平台最低观看要求执行，未知时完整播放；复习资料按课程单独开启。', 'hint'));
+      const bar = element('div', '', 'toolbar'); bar.append(button(state.autoRun ? '队列已开启' : '开始队列', () => this.actions.start(), 'primary'), button('暂停', () => this.actions.stop()), button('识别课程', () => this.actions.scan()), button('读取课程', () => this.actions.refresh())); this.body.append(bar);
+      this.body.append(element('div', '先勾选课程。效率模式按平台最低观看要求执行，未知时完整播放；复习资料按课程单独开启。「读取课程」会从学习通首页读取全部课程和任务点进度。', 'hint'));
       const courses = [...state.courses].sort((a, b) => a.order - b.order);
       for (const course of courses) {
         const card = element('div', '', 'card'); const row = element('div', '', 'row spread'); const label = element('label', '', 'row course-title'); const enabled = element('input'); enabled.type = 'checkbox'; enabled.checked = course.enabled; enabled.setAttribute('aria-label', `选择课程 ${course.title}`); enabled.addEventListener('change', () => this.changeCourse(course.key, 'enabled', enabled.checked)); label.append(enabled, document.createTextNode(course.title));
@@ -53,14 +54,22 @@ export class Panel {
         for (const [key, name] of [['efficiencyMode', '效率模式'], ['summaryEnabled', '复习资料']] as const) {
           const l = element('label'); const input = element('input'); input.type = 'checkbox'; input.checked = course[key]; input.setAttribute('aria-label', `${course.title} ${name}`); input.addEventListener('change', () => this.changeCourse(course.key, key, input.checked)); l.append(input, document.createTextNode(name)); options.append(l);
         }
-        card.append(row, options); this.body.append(card);
+        card.append(row);
+        if (course.progress) {
+          const meter = element('div', '', 'meter'); const fill = element('div'); fill.style.width = `${Math.max(0, Math.min(100, course.progress.percent))}%`; meter.append(fill); card.append(meter);
+          card.append(element('div', `${course.progress.text}${course.progress.total ? ` · ${Math.round(course.progress.percent)}%` : ''}${course.teacher ? ` · ${course.teacher}` : ''}`, 'muted'));
+        } else card.append(element('div', `进度未读取${course.teacher ? ` · ${course.teacher}` : ''}`, 'muted'));
+        if (course.url) {
+          const open = element('a', '打开课程', 'link'); open.href = course.url; open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open);
+        }
+        card.append(options); this.body.append(card);
       }
       if (!courses.length) this.body.append(element('div', '进入一门已登录课程后，点击“识别课程”。', 'empty'));
       this.body.append(button('导出配置（不含密钥）', () => downloadText('xxtplay-settings.json', this.repo.exportSettings())));
     } else if (this.tab === 'run') {
       const toolbar = element('div', '', 'toolbar'); toolbar.append(button('暂停队列', () => this.actions.stop()), button('重试待办', () => this.actions.retry())); this.body.append(toolbar);
       this.body.append(element('div', state.pausedReason || (state.autoRun ? '队列已开启，等待或正在执行可用任务。' : '队列已暂停。'), 'hint'));
-      for (const task of Object.values(state.tasks).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30)) this.body.append(this.taskCard(task));
+      for (const task of Object.values(state.tasks).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30)) this.body.append(this.taskCard(task, state.courses));
       const count = state.audit.length; const tokens = state.audit.reduce((n, r) => n + r.inputTokens + r.outputTokens, 0);
       this.body.append(element('div', `AI 调用 ${count} 次 · 累计 ${tokens.toLocaleString()} tokens（服务商返回值）`, 'muted'));
       for (const log of state.logs.slice(-35).reverse()) { const line = element('div', '', `log ${log.level}`); line.append(element('time', new Date(log.at).toLocaleTimeString('zh-CN', { hour12: false })), document.createTextNode(log.message)); this.body.append(line); }
@@ -76,11 +85,15 @@ export class Panel {
       for (const audit of state.audit.slice(-10).reverse()) this.body.append(element('div', `${new Date(audit.at).toLocaleTimeString('zh-CN')} · ${audit.purpose === 'answer' ? '答题' : '总结'} · ${audit.model} · ${audit.ok ? '成功' : '失败'}`, 'log'));
     }
   }
-  private taskCard(task: TaskRecord): HTMLElement {
+  private taskCard(task: TaskRecord, courses: Course[]): HTMLElement {
     const card = element('div', '', 'card'); card.append(element('div', task.title, 'course-title'), element('div', STATUS[task.status] || task.status, `status ${task.status === 'completed' ? 'success' : task.status === 'running' ? '' : 'warning'}`));
+    const course = courses.find(c => c.key === task.courseKey);
+    card.append(element('div', `${course?.title || task.courseKey} · ${task.chapter || '位置未记录'} · ${KIND[task.kind] || task.kind}`, 'muted'));
     if (task.progress) {
       const { current, duration, requirement } = task.progress; const meter = element('div', '', 'meter'); const fill = element('div'); fill.style.width = `${duration ? Math.min(100, current / duration * 100) : 0}%`; meter.append(fill); card.append(meter, element('div', `${Math.floor(current)} / ${Math.floor(duration)} 秒 · ${requirementLabel(requirement)}`, 'muted'));
     }
+    const link = task.url && !/\/ananas\/modules\//.test(task.url) ? task.url : course?.url;
+    if (link) { const open = element('a', '打开页面', 'link'); open.href = link; open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open); }
     if (task.reason) card.append(element('div', task.reason, 'muted notice')); return card;
   }
   private playbackSettings(): void {

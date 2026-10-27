@@ -10,16 +10,17 @@ import { readDocument, collectSubtitles } from './core/documents';
 import { SummaryService } from './core/summary';
 import { ANSWER_SYSTEM, validateAnswer } from './core/answer';
 import { ChaoxingAdapter, courseLinks, discoverCourse, readAccountId, type PlatformJob } from './platform/chaoxing';
+import { entryToCourse } from './platform/courses';
 import { FrameBus } from './platform/bus';
 import { Panel, examReview } from './ui/panel';
-import { downloadText, errorMessage, isChaoxingHost, shortHash, sleep, sourceLink } from './utils';
+import { downloadText, errorMessage, isChaoxingHost, shortHash, sleep } from './utils';
 
 export class Runtime {
   readonly adapter = new ChaoxingAdapter();
   readonly ai: AiClient; readonly worker: QuestionWorker; readonly summary: SummaryService; readonly lease: AccountLease;
   private panel?: Panel; private busy = false; private control?: AbortController; private interval?: ReturnType<typeof setInterval>; private observer?: MutationObserver; private scanTimer?: ReturnType<typeof setTimeout>;
   private lastNavigation = Date.now(); private examPanel?: ReturnType<typeof examReview>; private examTask?: PlatformJob; private gate?: ExamSubmissionGate; private removeListener?: () => void;
-  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0;
+  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0;
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -29,10 +30,11 @@ export class Runtime {
     bus.onExamContext = () => { this.adapter.inheritedExam = bus.inheritedExam(); this.control?.abort(); this.schedule(); };
     bus.onNavigate = id => { const course = this.course(); if (this.repo.state().autoRun && course?.enabled && !this.repo.state().examActive && this.adapter.navigateChapter(id)) this.lastNavigation = Date.now(); };
     if (topLevel) {
-      this.panel = new Panel(repo, { start: () => this.start(), stop: () => this.stop(), retry: () => this.retry(), scan: () => this.scanCourses(), summarize: key => this.generateSummary(key), exportNote: key => downloadText(`${repo.state().courses.find(c => c.key === key)?.title || '课程'}-复习资料.md`, this.summary.markdown(key), 'text/markdown;charset=utf-8') });
+      this.panel = new Panel(repo, { start: () => this.start(), stop: () => this.stop(), retry: () => this.retry(), scan: () => this.scanCourses(), refresh: () => this.refreshCatalog(true), summarize: key => this.generateSummary(key), exportNote: key => downloadText(`${repo.state().courses.find(c => c.key === key)?.title || '课程'}-复习资料.md`, this.summary.markdown(key), 'text/markdown;charset=utf-8') });
       GM_registerMenuCommand('打开 xxtplay 学习助手', () => this.panel?.show());
     }
     this.scanCourses();
+    if (topLevel && (location.hostname === 'i.chaoxing.com' || /^\/base\/?$/.test(location.pathname))) void this.refreshCatalog(true);
     this.observer = new MutationObserver(records => { if (records.some(r => !(r.target as Element).closest?.('#xxtplay-root,#xxtplay-exam-review'))) this.schedule(); });
     this.observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'src', 'aria-checked'] });
     this.interval = setInterval(() => this.schedule(), 4000);
@@ -43,13 +45,55 @@ export class Runtime {
     const found = discoverCourse(undefined, this.fallback); return found ? this.repo.state().courses.find(c => c.key === found.key) : undefined;
   }
   scanCourses(): void {
-    const discovered = [discoverCourse(undefined, this.fallback), ...courseLinks(document)].filter((c): c is Course => !!c);
-    const fresh = discovered.filter(c => !this.repo.state().courses.some(existing => existing.key === c.key));
-    if (fresh.length) this.repo.update(s => { for (const course of fresh) if (!s.courses.some(c => c.key === course.key)) s.courses.push({ ...course, order: s.courses.length }); });
+    const current = discoverCourse(undefined, this.fallback);
+    const discovered = [current, ...courseLinks(document), ...this.adapter.courseCards().map((entry, index) => entryToCourse(entry, index))].filter((c): c is Course => !!c);
+    this.repo.update(s => {
+      for (const course of discovered) {
+        const existing = s.courses.find(c => c.key === course.key);
+        if (!existing) { s.courses.push({ ...course, order: s.courses.length }); continue; }
+        existing.title = course.title || existing.title;
+        if (course.cpi) existing.cpi = course.cpi;
+        if (course === current && course.url) existing.url = course.url;
+        else if (!existing.url) existing.url = course.url;
+        if (course.teacher) existing.teacher = course.teacher;
+        if (course.progress && (!existing.progress || course.progress.updatedAt >= existing.progress.updatedAt)) existing.progress = course.progress;
+      }
+      const local = this.adapter.localProgress(); const target = current && s.courses.find(c => c.key === current.key);
+      if (local && target) target.progress = local;
+    });
     this.panel?.schedule(); this.schedule();
   }
+  /** Read every enrolled course from the homepage and, optionally, each course's task-point progress. */
+  async refreshCatalog(withProgress = true): Promise<void> {
+    try {
+      const entries = await this.adapter.loadCatalog();
+      if (!entries.length) { this.repo.log('warn', '未读取到课程列表：请在“我的课程”首页使用“读取全部课程”，或先进入一门课程'); return; }
+      this.repo.update(s => {
+        for (const entry of entries) {
+          const existing = s.courses.find(c => c.key === `${entry.id}:${entry.classId}`);
+          if (!existing) { s.courses.push(entryToCourse(entry, s.courses.length)); continue; }
+          existing.title = entry.title; if (entry.cpi) existing.cpi = entry.cpi;
+          if (entry.teacher) existing.teacher = entry.teacher;
+          if (entry.progress) existing.progress = entry.progress;
+        }
+      });
+      this.repo.log('info', `读取到 ${entries.length} 门课程`);
+      this.panel?.schedule();
+      if (!withProgress) return;
+      for (const entry of entries) {
+        const course = this.repo.state().courses.find(c => c.key === `${entry.id}:${entry.classId}`); if (!course) continue;
+        if (course.progress && Date.now() - course.progress.updatedAt < 5 * 60_000) continue;
+        try {
+          const progress = await this.adapter.loadProgress(course);
+          if (progress) this.repo.update(s => { const target = s.courses.find(c => c.key === course.key); if (target) target.progress = progress; });
+        } catch (error) { this.repo.log('warn', `读取「${entry.title}」进度失败：${errorMessage(error)}`); }
+        await sleep(600);
+      }
+      this.repo.log('info', '课程进度读取完成');
+    } catch (error) { this.repo.log('warn', `读取课程列表失败：${errorMessage(error)}`); }
+  }
   start(): void {
-    if (!this.repo.state().courses.some(c => c.enabled)) { this.repo.log('warn', '请先勾选至少一门课程'); return; }
+    if (!this.repo.state().courses.some(c => c.enabled)) { this.repo.log('warn', '请先勾选至少一门课程；正在尝试读取全部课程'); void this.refreshCatalog(false); return; }
     this.repo.update(s => { s.autoRun = true; s.pausedReason = undefined; }); this.repo.log('info', '课程队列已开启；非答题和总结流程不调用 AI'); this.schedule();
   }
   stop(): void { this.repo.update(s => { s.autoRun = false; s.pausedReason = '已手动暂停，断点已保存'; }); this.control?.abort(); this.lease.release(); }
@@ -66,12 +110,25 @@ export class Runtime {
     return this.lease.owned();
   }
   private taskId(job: PlatformJob, course: Course): string { return `${course.key}:${job.id}`; }
+  private refreshLocalProgress(courseKey: string): void {
+    const progress = this.adapter.localProgress(); if (!progress) return;
+    this.repo.update(s => { const course = s.courses.find(c => c.key === courseKey); if (course) course.progress = progress; });
+  }
   private updateTask(id: string, patch: Partial<TaskRecord>): void { this.repo.update(s => { if (s.tasks[id]) Object.assign(s.tasks[id], patch, { updatedAt: Date.now() }); }); }
   private async tick(): Promise<void> {
     if (!this.bus.examContextKnown()) return;
     this.adapter.inheritedExam = this.bus.inheritedExam();
     const course = this.course();
-    if (!course) { this.scanCourses(); return; }
+    if (!course) {
+      this.scanCourses();
+      if (this.topLevel && this.repo.state().autoRun) {
+        const next = [...this.repo.state().courses].filter(item => item.enabled && item.url).sort((a, b) => a.order - b.order)[0];
+        if (next && Date.now() - this.lastCourseStart > 8_000) {
+          this.lastCourseStart = Date.now(); this.repo.log('info', `打开课程：${next.title}`); location.assign(next.url);
+        }
+      }
+      return;
+    }
     const jobs = this.adapter.jobs(); const chapters = this.adapter.chapters();
     const exam = this.adapter.isExam() && jobs.some(j => j.kind === 'exam');
     if (exam && (this.repo.state().examActive?.tabId !== this.tabId || Date.now() - (this.repo.state().examActive?.at || 0) > 10_000)) this.repo.update(s => { s.examActive = { tabId: this.tabId, at: Date.now() }; });
@@ -106,10 +163,11 @@ export class Runtime {
       if (await this.adapter.verifyPassed(job)) this.updateTask(id, { status: 'completed', receipt: '重新读取平台确认提交成功', reason: undefined });
       return;
     }
-    if (!old) this.repo.update(s => { s.tasks[id] = { id, courseKey: course.key, title: job.title, kind: job.kind, status: 'queued', url: sourceLink(document.URL), updatedAt: Date.now(), attempts: 0 }; });
-    if (job.passed) { this.updateTask(id, { status: 'completed', receipt: '平台已标记任务通过' }); return; }
+    const chapter = this.adapter.chapterTitle(); const pageUrl = this.adapter.studyUrl();
+    if (!old) this.repo.update(s => { s.tasks[id] = { id, courseKey: course.key, title: job.title, kind: job.kind, status: 'queued', url: pageUrl, chapter, updatedAt: Date.now(), attempts: 0 }; });
+    if (job.passed) { this.updateTask(id, { status: 'completed', chapter, receipt: '平台已标记任务通过' }); return; }
     if (this.repo.state().pausedReason) this.repo.update(s => { s.pausedReason = undefined; });
-    this.updateTask(id, { status: 'running', attempts: (old?.attempts || 0) + 1, reason: undefined });
+    this.updateTask(id, { status: 'running', chapter, url: pageUrl || old?.url, attempts: (old?.attempts || 0) + 1, reason: undefined });
     const allowed = () => this.authorized(job.kind === 'exam');
     try {
       if (!allowed()) throw new DOMException('任务已暂停', 'AbortError');
@@ -162,7 +220,7 @@ export class Runtime {
           }
         }
       } else throw new Error('该任务类型尚未适配');
-      if (receipt) { this.updateTask(id, { status: 'completed', receipt, reason: undefined }); this.repo.log('success', `${job.title}：${receipt}`); }
+      if (receipt) { this.updateTask(id, { status: 'completed', receipt, reason: undefined }); this.repo.log('success', `${job.title}：${receipt}`); this.refreshLocalProgress(course.key); }
     } catch (e) {
       const attempted = this.repo.state().tasks[id]?.status === 'submitted-unverified';
       const status: TaskStatus = attempted ? 'submitted-unverified' : signal.aborted || e instanceof DOMException && e.name === 'AbortError' ? 'queued' : e instanceof HumanRequired ? 'waiting-human' : 'pending';

@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/ocsjs/ocsjs",
+  "commit": "da5c0775a9d055724149ff505eae75bd85d334f9",
+  "license": "MIT",
+  "files": {
+    "packages/core/src/core/worker/resolvers/single.ts": "src/vendor/ocs/single.ts",
+    "packages/core/src/core/worker/resolvers/multiple.ts": "src/vendor/ocs/multiple.ts",
+    "packages/core/src/core/worker/resolvers/judgement.ts": "src/vendor/ocs/judgement.ts",
+    "packages/core/src/core/worker/resolvers/completion.ts": "src/vendor/ocs/completion.ts",
+    "packages/core/src/core/worker/utils.ts": "src/vendor/ocs/answer-utils.ts",
+    "packages/core/src/core/utils/string.ts": "src/vendor/ocs/match-string.ts",
+    "packages/core/src/utils/string.ts": "src/vendor/ocs/string.ts"
+  },
+  "changes": "Relative imports rewritten; worker/utils.ts contains only answer splitting/plain-answer helpers. Scheduling and Chaoxing selectors adapted separately with attribution."
+}

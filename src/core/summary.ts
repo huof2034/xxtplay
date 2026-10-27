@@ -26,7 +26,7 @@ export class SummaryService {
         // Bound individual calls and preserve all chunks, rather than silently dropping later materials.
         const text = available.map((m, i) => `[材料 ${i + 1} / ${m.kind}]\n${m.text}`).join('\n\n');
         const chunks = text.match(/[\s\S]{1,16_000}/g) || [''];
-        const imageUrls = [...new Set(available.flatMap(m => m.images || []))];
+        const imageUrls = visionModel ? [...new Set(available.flatMap(m => m.images || []))] : [];
         const imageChunks: string[][] = []; for (let i = 0; i < imageUrls.length; i += 8) imageChunks.push(imageUrls.slice(i, i + 8));
         for (let i = 0; i < Math.max(chunks.length, imageChunks.length); i++) {
           throwIfAborted(signal); if (!allowed()) throw new Error('复习资料功能已关闭');

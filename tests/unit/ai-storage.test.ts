@@ -17,6 +17,17 @@ describe('AI调用边界', () => {
   it('只返回推理过程的响应不作为答案', async () => { const t = new FakeTransport(); for (let i = 0; i < 3; i++) t.responses.push({ status: 200, headers: '', text: '{"choices":[{"message":{"reasoning_content":"not a final answer"}}]}' }); const ai = new AiClient(t, () => ({ ...DEFAULT_CONFIG.ai, apiKey: 'secret' }), () => {}); await expect(ai.complete('answer', 'c', '', '')).rejects.toThrow('空答案'); expect(t.requests).toHaveLength(3); });
   it('解析JSON不执行其中的代码', () => { expect(parseJsonObject('```json\n{"answer":"<script>evil</script>"}\n```').answer).toContain('<script>'); expect(() => parseJsonObject('(()=>alert(1))()')).toThrow(); });
   it('未开启复习的课程不调用AI', async () => { const repo = new Repository(new MemoryStorage(), '1'); const t = new FakeTransport(); const service = new SummaryService(repo, new AiClient(t, () => DEFAULT_CONFIG.ai, () => {})); await expect(service.generate('c')).rejects.toThrow('未开启'); expect(t.requests).toHaveLength(0); });
+  it('未配置视觉模型时复习不发送图片并标注缺失', async () => {
+    const repo = new Repository(new MemoryStorage(), '1');
+    repo.saveConfig({ ...DEFAULT_CONFIG, ai: { ...DEFAULT_CONFIG.ai, apiKey: 'test-key', visionModel: '' } });
+    repo.update(s => {
+      s.courses.push({ id: '1', classId: '2', cpi: '3', key: 'c', title: '课程', url: 'https://mooc1.chaoxing.com/course', enabled: true, efficiencyMode: false, summaryEnabled: true, order: 0 });
+      s.materials.push({ id: 'm1', courseKey: 'c', chapter: '第一章', kind: 'document', text: '文本材料', source: 'https://mooc1.chaoxing.com/course?courseid=1', images: ['data:image/png;base64,AA=='] });
+    });
+    const t = new FakeTransport(); const service = new SummaryService(repo, new AiClient(t, () => repo.config().ai, () => {}));
+    await service.generate('c');
+    expect(t.requests).toHaveLength(1); expect(t.requests[0].body).not.toContain('image_url'); expect(repo.state().notes[0].markdown).toContain('1 张图片材料未分析');
+  });
 });
 describe('账号隔离与发布数据保护', () => {
   it('两个账号的记录隔离', () => { const storage = new MemoryStorage(); const a = new Repository(storage, '1'); const b = new Repository(storage, '2'); a.update(s => { s.autoRun = true; }); expect(b.state().autoRun).toBe(false); });

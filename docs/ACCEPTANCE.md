@@ -9,7 +9,7 @@
 | 检查 | 命令 | 结果 |
 | --- | --- | --- |
 | TypeScript | `npm run typecheck` | 通过 |
-| 单元测试 | `npm test` | 54 项通过 |
+| 单元测试 | `npm test` | 55 项通过 |
 | 构建 | `npm run build` | 通过，生成 `dist/xxtplay.user.js`、`dist/xxtplay.meta.js` |
 | Playwright 模拟页面 | `$env:PW_CHANNEL='chrome'; npm run test:e2e` | 19 项通过（本机 Playwright Chromium 下载未完成，使用系统 Chrome） |
 | 发布包与哈希 | `npm run package` | 见下方 SHA-256 |
@@ -28,14 +28,14 @@
 在 `npm run package` 之后由 `release/SHA256SUMS.txt` 记录；本文件在发布前需与之一致。当前脚本均为 `0.2.0`。
 
 ```text
-39C8B830B04938C06B6B759C74ED67259ED092FB51D9E2582FC677CA77C19B7A  xxtplay.user.js
+26CF43F9EF17B8C27E4BF17BB15DF1F996604C5EB056894A14B248F3F0B856DB  xxtplay.user.js
 12E562BCE8BC4C23AAC5118F749363D65C87E2D6771DF6193664B43AB1A8A605  xxtplay.meta.js
 EBCCC892B63AC5F195562BD6848B657B0DE21D01931BA2C93F615A5C62A8C330  LICENSE
 B8FA9B4FB74D3AA38876DE4016FCE2F0821352B68854EE61EBAD86B566158A08  THIRD_PARTY_NOTICES.md
 F15DD9C2F99353DCB42D52F043A18824CD49B19D2CF358E0E243EFD62A8C1ADB  README.md
 ```
 
-`Get-FileHash release/xxtplay.user.js -Algorithm SHA256` 已核对为 `39C8B830B04938C06B6B759C74ED67259ED092FB51D9E2582FC677CA77C19B7A`。注意：README、许可证或通知文件若在打包后修改，需重新运行 `npm run package` 并更新本文件中的哈希。
+`Get-FileHash release/xxtplay.user.js -Algorithm SHA256` 已核对为 `26CF43F9EF17B8C27E4BF17BB15DF1F996604C5EB056894A14B248F3F0B856DB`。注意：README、许可证或通知文件若在打包后修改，需重新运行 `npm run package` 并更新本文件中的哈希。
 
 ## 二、真实平台验收（待用户完成）
 
@@ -109,6 +109,6 @@ gh release create v0.2.0 release/* --title "xxtplay 0.2.0" --notes-file CHANGELO
 
 ## 三、结论
 
-- 工程检查：通过（54 单元 + 19 模拟 e2e + 构建）。
+- 工程检查：通过（55 单元 + 19 模拟 e2e + 构建）。
 - 真实平台验收：未完成，不能以自动化结果代替。
 - 公开发布：未完成，等待用户 GitHub 登录与确认。

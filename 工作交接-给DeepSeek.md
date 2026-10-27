@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 交接文档、源码、测试与真实页面样本已检查。`npm run check` 通过：TypeScript、54 项单元测试、构建、19 项 Playwright 模拟页面测试。
+- 交接文档、源码、测试与真实页面样本已检查。`npm run check` 通过：TypeScript、55 项单元测试、构建、19 项 Playwright 模拟页面测试。
 - 自动播放问题已修复：优先静音开始，区分浏览器策略拒绝（`NotAllowedError`）与播放器加载中断（`AbortError`），失败时在视频内显示一次性点击提示，不再直接停摆。
 - AI 设置已支持服务商与模型选择：DeepSeek、通义千问（阿里云百炼）、Kimi、自定义 OpenAI 兼容接口；文本/视觉模型可下拉选择或手填，视觉模型可留空。
 - 已补齐中文 `README.md`、`LICENSE`、`THIRD_PARTY_NOTICES.md`、`CHANGELOG.md`、`docs/ACCEPTANCE.md` 和 `scripts/package.mjs`。
@@ -27,9 +27,9 @@
 - 自动播放策略处理位于 `src/core/playback.ts`：优先 video.js 播放器 API，失败回退原生元素；策略拒绝时静音重试；`AbortError` 等待媒体就绪后重试；极端策略下显示提示条并等待一次点击；不会伪造用户手势或修改浏览器启动参数。
 - AI 服务商目录位于 `src/ai/providers.ts`，旧配置会自动推断 provider。面板支持模型下拉+自定义；切换服务商必须重填 Key；视觉模型为空时图片题保留待办，不发送请求。
 - 使用 OCS 的 MIT 许可部分代码，固定提交 `da5c0775a9d055724149ff505eae75bd85d334f9`；引用内容位于 `src/vendor/ocs/`，许可及来源映射位于 `licenses/`。ChaoXing-AutoAnswer 和 Samueli924/chaoxing 仅用于调查参考，不应声称复制了它们的代码。
-- 最近一次 `npm run check`（`PW_CHANNEL=chrome`）：TypeScript 通过、54 项单元测试、构建、19 项 Playwright 模拟页面测试通过。模拟页面不证明真实课程、真实 AI 服务或真实提交已完整验证。
+- 最近一次 `npm run check`（`PW_CHANNEL=chrome`）：TypeScript 通过、55 项单元测试、构建、19 项 Playwright 模拟页面测试通过。模拟页面不证明真实课程、真实 AI 服务或真实提交已完整验证。
 - 发布资产：`npm run package` 生成 `release/xxtplay.user.js`、`release/xxtplay.meta.js`、说明文件与 `SHA256SUMS.txt`。当前脚本 SHA-256：
-  - `xxtplay.user.js`：`39C8B830B04938C06B6B759C74ED67259ED092FB51D9E2582FC677CA77C19B7A`
+  - `xxtplay.user.js`：`26CF43F9EF17B8C27E4BF17BB15DF1F996604C5EB056894A14B248F3F0B856DB`
   - `xxtplay.meta.js`：`12E562BCE8BC4C23AAC5118F749363D65C87E2D6771DF6193664B43AB1A8A605`
 - 这是本地构建文件的哈希，未独立核对油猴中已安装副本；重新构建后须重新计算并更新 `docs/ACCEPTANCE.md`。
 - 用户此前已安装 Tampermonkey、允许运行用户脚本并在真实课程页面看到 xxtplay 面板；用户反馈视频已播放且完成一个任务点。本次修复后需要用户重新安装/更新脚本才能生效，该现场反馈尚未独立核验。

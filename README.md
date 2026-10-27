@@ -4,7 +4,7 @@ xxtplay 是一个运行在 Chrome / Edge + Tampermonkey 上的学习通（超星
 
 > 本项目用于个人学习进度管理。请遵守学校规定与平台服务条款，不要用于替考、代刷或绕过验证码、人脸验证等安全措施。脚本按平台真实回执判断完成，不把「模拟测试通过」当作真实课程验收。
 
-当前版本：`0.4.0`。真实验收状态见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
+当前版本：`0.4.0`，已发布在 <https://github.com/huof2034/xxtplay>。真实验收状态见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
 
 ## 功能
 
@@ -27,7 +27,7 @@ xxtplay 是一个运行在 Chrome / Edge + Tampermonkey 上的学习通（超星
 2. 在扩展管理页开启「开发者模式」，并在 Tampermonkey 中允许运行用户脚本。
 3. 安装脚本：
    - 本地构建：`npm install && npm run build`，在 Tampermonkey 中新建脚本并粘贴 `dist/xxtplay.user.js`；或直接把该文件拖入浏览器。
-   - 公开发布后：从 GitHub Releases 下载 `xxtplay.user.js`（更新地址使用 `xxtplay.meta.js`）。
+   - 直接安装：从 [Releases](https://github.com/huof2034/xxtplay/releases/latest) 下载 `xxtplay.user.js`（更新地址使用 `xxtplay.meta.js`）。
 4. 打开学习通并登录，进入课程学习页；会出现「xxtplay · 学习助手」面板（默认右下角，可拖动标题栏移动）。
 
 脚本只匹配 `*.chaoxing.com`。AI 请求通过油猴的跨域请求能力发出，首次使用自定义域名时 Tampermonkey 会要求授权。

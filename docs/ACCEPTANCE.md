@@ -35,7 +35,7 @@
 045C208F26C7435BBEF7A75333F5F7E0ADE37ABDA6341246FE0F218634C0A37A  xxtplay.meta.js
 EBCCC892B63AC5F195562BD6848B657B0DE21D01931BA2C93F615A5C62A8C330  LICENSE
 B8FA9B4FB74D3AA38876DE4016FCE2F0821352B68854EE61EBAD86B566158A08  THIRD_PARTY_NOTICES.md
-7521C7CE586EA6A40FD45BDAFA41CF2C586AEB1BD9DC7C18DD417354DE6B042A  README.md
+58CA033225199C262DAA6839373BDB93979D09164B6730D0ACF5CC900E2C37FC  README.md
 ```
 
 `Get-FileHash release/xxtplay.user.js -Algorithm SHA256` 已核对为 `585FBF18F94A62D1E9361E281446A5AE6BFAD78920A429B40A0C45ABD6210298`。注意：README、许可证或通知文件若在打包后修改，需重新运行 `npm run package` 并更新本文件中的哈希。
@@ -56,7 +56,7 @@ B8FA9B4FB74D3AA38876DE4016FCE2F0821352B68854EE61EBAD86B566158A08  THIRD_PARTY_NO
 | 讨论题发布 | 待验收 | 确认只发布一次，刷新不重复 |
 | 复习资料生成 | 待验收 | 只对开启复习的课程；检查图片缺失标注 |
 | 考试自动填答 + 人工确认 | 待验收 | 先用低风险测验；真实考试只在本人主动开始后处理 |
-| 公开发布与匿名下载 | 未完成 | 需要 GitHub 登录；当前仓库尚未发布 |
+| 公开发布与匿名下载 | 已完成 | <https://github.com/huof2034/xxtplay/releases/latest>；已匿名下载并核对 SHA-256 |
 
 ### 1. 自动播放
 
@@ -101,22 +101,29 @@ AI 调用次数：
 3. 勾选并点击确认后，以平台结果为准；刷新后确认不应继承。
 4. 不在真实考试中代替本人做提交决定。
 
-### 5. 公开发布（待完成）
+### 5. 公开发布（已完成）
 
-`gh` 当前未登录，`huof2034/xxtplay` 匿名访问 404。发布前需要：
+- 公开仓库：<https://github.com/huof2034/xxtplay>
+- 最新 Release：<https://github.com/huof2034/xxtplay/releases/tag/v0.4.0>
+- 标签：`v0.2.0`、`v0.3.0`、`v0.4.0` 已推送。
+- 发布资产：`xxtplay.user.js`、`xxtplay.meta.js`、`SHA256SUMS.txt`、`README.md`、`LICENSE`、`THIRD_PARTY_NOTICES.md`。
+- 匿名下载 `releases/latest/download/xxtplay.user.js` 后核对：`585FBF18F94A62D1E9361E281446A5AE6BFAD78920A429B40A0C45ABD6210298`，与 `SHA256SUMS.txt` 一致。
+
+后续版本发布流程：
 
 ```powershell
-gh auth login
-gh repo create huof2034/xxtplay --public --source=. --remote=origin --push
-git push origin main --tags
+npm run check
 npm run package
-gh release create v0.4.0 release/* --title "xxtplay 0.4.0" --notes-file CHANGELOG.md
+git add -A; git commit -m "xxtplay x.y.z：..."
+git tag vX.Y.Z
+git push origin main --tags
+gh release create vX.Y.Z release/* --title "xxtplay X.Y.Z" --notes-file CHANGELOG.md
 ```
 
-发布后匿名下载 `xxtplay.user.js` 和 `xxtplay.meta.js`，用 `SHA256SUMS.txt` 核对哈希，并确认 Tampermonkey 能通过 `@updateURL` 检查更新。
+发布后匿名下载两个脚本，用 `SHA256SUMS.txt` 核对哈希，并确认 Tampermonkey 能通过 `@updateURL` 检查更新。
 
 ## 三、结论
 
 - 工程检查：通过（59 单元 + 26 模拟 e2e + 构建）。
 - 真实平台验收：未完成，不能以自动化结果代替。
-- 公开发布：未完成，等待用户 GitHub 登录与确认。
+- 公开发布：已完成，Release `v0.4.0` 与匿名下载哈希均已核对。

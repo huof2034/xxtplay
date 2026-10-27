@@ -26,7 +26,8 @@ export class Repository {
     const savedAi = (saved.ai || {}) as Partial<AiConfig>;
     const ai: AiConfig = { ...DEFAULT_CONFIG.ai, ...savedAi };
     ai.provider = isProviderId(savedAi.provider) ? savedAi.provider : inferProvider(ai.baseUrl);
-    return { ...DEFAULT_CONFIG, ...saved, ai };
+    const playback = { ...DEFAULT_CONFIG.playback, ...(saved.playback || {}) };
+    return { ...DEFAULT_CONFIG, ...saved, ai, playback };
   }
   saveConfig(config: GlobalConfig): void { this.storage.set('xxtplay:v1:config', config); this.onChange?.(); }
   state(): AccountState { return this.storage.get(this.key, emptyAccount(this.accountId)); }

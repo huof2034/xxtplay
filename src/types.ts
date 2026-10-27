@@ -5,8 +5,9 @@ export type AiPurpose = 'answer' | 'summary';
 export type AiProviderId = 'deepseek' | 'qwen' | 'kimi' | 'custom';
 
 export interface AiConfig { provider: AiProviderId; baseUrl: string; apiKey: string; textModel: string; visionModel: string }
+export interface PlaybackConfig { autoOpen: boolean; autoSpeed: boolean; speed: number; autoSeek: boolean }
 export interface GlobalConfig {
-  version: 1; ai: AiConfig; notifications: boolean; muted: boolean;
+  version: 1; ai: AiConfig; playback: PlaybackConfig; notifications: boolean; muted: boolean;
 }
 export interface Course {
   id: string; classId: string; cpi: string; key: string; title: string; url: string;
@@ -47,6 +48,7 @@ export interface AccountState {
 
 export const DEFAULT_CONFIG: GlobalConfig = {
   version: 1, ai: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', apiKey: '', textModel: 'deepseek-flash', visionModel: 'deepseek-flash' },
+  playback: { autoOpen: true, autoSpeed: true, speed: 2, autoSeek: true },
   notifications: true, muted: true,
 };
 export const emptyAccount = (accountId: string): AccountState => ({

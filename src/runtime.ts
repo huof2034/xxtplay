@@ -19,7 +19,7 @@ export class Runtime {
   readonly ai: AiClient; readonly worker: QuestionWorker; readonly summary: SummaryService; readonly lease: AccountLease;
   private panel?: Panel; private busy = false; private control?: AbortController; private interval?: ReturnType<typeof setInterval>; private observer?: MutationObserver; private scanTimer?: ReturnType<typeof setTimeout>;
   private lastNavigation = Date.now(); private examPanel?: ReturnType<typeof examReview>; private examTask?: PlatformJob; private gate?: ExamSubmissionGate; private removeListener?: () => void;
-  private lastVerification = new Map<string, number>();
+  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0;
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -108,6 +108,7 @@ export class Runtime {
     }
     if (!old) this.repo.update(s => { s.tasks[id] = { id, courseKey: course.key, title: job.title, kind: job.kind, status: 'queued', url: sourceLink(document.URL), updatedAt: Date.now(), attempts: 0 }; });
     if (job.passed) { this.updateTask(id, { status: 'completed', receipt: '平台已标记任务通过' }); return; }
+    if (this.repo.state().pausedReason) this.repo.update(s => { s.pausedReason = undefined; });
     this.updateTask(id, { status: 'running', attempts: (old?.attempts || 0) + 1, reason: undefined });
     const allowed = () => this.authorized(job.kind === 'exam');
     try {
@@ -190,10 +191,25 @@ export class Runtime {
     const jobs = reports.flatMap(r => r.snapshot.jobs);
     if (jobs.some(j => !state.tasks[this.taskId(j, course)] || ['queued', 'running'].includes(state.tasks[this.taskId(j, course)].status))) return;
     const catalogue = reports.filter(r => r.snapshot.chapters.length).sort((a, b) => b.snapshot.chapters.length - a.snapshot.chapters.length)[0];
-    if (!catalogue) return;
+    if (!catalogue) {
+      if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) { this.lastTaskOpen = Date.now(); this.repo.log('info', '已尝试打开当前页面的任务点，等待播放器加载'); }
+      return;
+    }
     const activeChapter = catalogue.snapshot.chapters.find(c => c.current);
     if (activeChapter && !activeChapter.completed && jobs.length === 0) {
-      const reason = '当前章节尚未识别到任务，保留当前页面等待检查';
+      if (Date.now() - this.lastTaskOpen < 8_000) {
+        const waiting = '正在打开任务点，等待播放器加载';
+        if (state.pausedReason !== waiting) this.repo.update(s => { s.pausedReason = waiting; });
+        return;
+      }
+      if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) {
+        this.lastTaskOpen = Date.now();
+        const opening = `正在打开任务点：${activeChapter.title}`;
+        this.repo.update(s => { s.pausedReason = opening; });
+        this.repo.log('info', `未发现已加载的视频，自动打开任务点：${activeChapter.title}`);
+        return;
+      }
+      const reason = '当前章节尚未识别到任务，已尝试自动打开；若仍无视频，请手动点开一次';
       if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
       return;
     }

@@ -2,9 +2,9 @@ import { chromium, expect, type BrowserContext, type Page } from '@playwright/te
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course } from '../../src/types';
+import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course, type PlaybackConfig } from '../../src/types';
 
-export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean }
+export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; playback?: Partial<PlaybackConfig> }
 export interface Harness {
   page: Page; context: BrowserContext; values: Map<string, any>; apiCalls: { body: any; purpose: string }[]; submissions: { jobId: string; kind: string }[];
   state(): AccountState; close(): Promise<void>;
@@ -36,7 +36,7 @@ const shell = (body: string, script = '') => `<!doctype html><html><head><meta c
 export async function createHarness(context: BrowserContext, options: HarnessOptions = {}): Promise<Harness> {
   const values = new Map<string, any>(); const state = emptyAccount('111'); state.autoRun = options.autoRun ?? true;
   state.courses = [{ ...course(), efficiencyMode: options.efficient ?? false, summaryEnabled: options.summary ?? false }, ...(options.secondCourse ? [course('101')] : [])];
-  values.set(ACCOUNT_KEY, state); values.set('xxtplay:v1:config', { ...DEFAULT_CONFIG, muted: options.muted ?? true, ai: { ...DEFAULT_CONFIG.ai, provider: 'custom', baseUrl: 'https://ai.example.invalid', apiKey: options.mode === 'video' || options.mode === 'document' && !options.summary ? '' : 'fixture-key' } });
+  values.set(ACCOUNT_KEY, state); values.set('xxtplay:v1:config', { ...DEFAULT_CONFIG, muted: options.muted ?? true, playback: { ...DEFAULT_CONFIG.playback, ...options.playback }, ai: { ...DEFAULT_CONFIG.ai, provider: 'custom', baseUrl: 'https://ai.example.invalid', apiKey: options.mode === 'video' || options.mode === 'document' && !options.summary ? '' : 'fixture-key' } });
   const apiCalls: Harness['apiCalls'] = []; const submissions: Harness['submissions'] = []; const passed = new Set<string>();
   await context.addCookies([{ name: '_uid', value: '111', domain: '.chaoxing.com', path: '/', secure: true, sameSite: 'Lax' }]);
   await context.exposeBinding('__fixtureGmInit', () => Object.fromEntries(values));
@@ -85,9 +85,14 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
       await route.fulfill({ contentType: 'text/html', body: shell('<input id="userId" value="111" type="hidden"><h1>考试外层页面</h1><iframe src="https://mooc1.chaoxing.com/work/doHomeWorkNew?workId=900&courseId=100&clazzid=200"></iframe>') }); return;
     }
     if (u.pathname.includes('/knowledge/cards')) {
-      const attachment = { job: true, isPassed: passed.has(jobId), jobid: jobId, property: { _jobid: jobId, module: 'insertvideo', name: '测试视频', mid: 'm1' } };
+      const attachment = { job: true, isPassed: passed.has(jobId), jobid: jobId, property: { _jobid: jobId, module: 'insertvideo', name: '测试视频', mid: 'm1', fastforward: options.seekAllowed ? 'true' : 'false', doublespeed: options.speedAllowed ? 1 : 0 } };
       const player = `/ananas/modules/video/index.html?jobid=${jobId}&courseId=${id}&clazzid=200`;
-      await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct"><div class="ans-job-icon"><div class="task-condition">${options.requirement ?? '完成条件 观看时长需 ≥ 总时长的 90% (未完成任务点前, 当前视频不可拖拽)'}</div></div><iframe data='${JSON.stringify({ jobid: jobId })}' src="${player}"></iframe></div>`, `var mArg=${JSON.stringify({ attachments: [attachment], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};`) }); return;
+      const context = `var mArg=${JSON.stringify({ attachments: [attachment], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};`;
+      const condition = `<div class="ans-job-icon"><div class="task-condition">${options.requirement ?? '完成条件 观看时长需 ≥ 总时长的 90% (未完成任务点前, 当前视频不可拖拽)'}</div></div>`;
+      if (options.lazyTask) {
+        await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct" id="lazy-point">${condition}<div id="lazy-slot"></div></div>`, `${context}document.querySelector('.ans-job-icon').addEventListener('click',()=>{if(document.getElementById('lazy-slot').children.length)return;var f=document.createElement('iframe');f.className='ans-insertvideo-online';f.setAttribute('data',JSON.stringify({jobid:'${jobId}'}));f.src='${player}';document.getElementById('lazy-slot').append(f)});`) }); return;
+      }
+      await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct">${condition}<iframe data='${JSON.stringify({ jobid: jobId })}' src="${player}"></iframe></div>`, context) }); return;
     }
     if (u.pathname.includes('/ananas/modules/video')) {
       const mark = `parent.mArg.attachments[0].isPassed=true;parent.document.querySelector('.ans-attach-ct').classList.add('ans-job-finished');void window.__fixturePass('${jobId}');top.postMessage({platform:'passed',jobId:'${jobId}'},'*')`;

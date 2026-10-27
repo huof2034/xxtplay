@@ -104,6 +104,39 @@ test('play() 首次被中断后重试完成', async ({ context }) => {
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
   expect(h.apiCalls).toHaveLength(0);
 });
+test('未打开的任务点会自动打开并继续播放', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue', lazyTask: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 35_000 }).toBe(true);
+  expect(h.state().logs.some(log => /自动打开任务点/.test(log.message))).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('平台允许时自动倍速并记录日志', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'video', speedAllowed: true, playback: { autoSpeed: true, speed: 2, autoSeek: false } });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
+  expect(h.state().logs.some(log => /已设置为 2×/.test(log.message))).toBe(true);
+});
+test('平台允许拖动时自动跳到结尾', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'video', seekAllowed: true, requirement: '完成条件 观看时长需 ≥ 总时长的 90%', playback: { autoSpeed: false, autoSeek: true } });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
+  expect(h.state().logs.some(log => /跳到接近结尾/.test(log.message))).toBe(true);
+});
+test('设置面板可拖动并记住位置', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'quiz', autoRun: false });
+  const head = h.page.locator('#xxtplay-root .head'); const box = await head.boundingBox();
+  expect(box).not.toBeNull();
+  await h.page.mouse.move(box!.x + 40, box!.y + 15); await h.page.mouse.down();
+  await h.page.mouse.move(box!.x + 170, box!.y + 110, { steps: 8 }); await h.page.mouse.up();
+  await expect.poll(() => h.values.get('xxtplay:v1:ui:position')).toBeTruthy();
+  const position = h.values.get('xxtplay:v1:ui:position');
+  expect(position.left).toBeGreaterThan(0); expect(position.top).toBeGreaterThan(0);
+});
+test('播放设置可修改并立即保存', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'quiz', autoRun: false });
+  await h.page.getByRole('button', { name: '播放', exact: true }).click();
+  await h.page.getByLabel('倍速', { exact: true }).selectOption('2.5');
+  await h.page.getByLabel('平台允许时自动拖到结尾', { exact: true }).uncheck();
+  await expect.poll(() => h.values.get('xxtplay:v1:config').playback).toMatchObject({ speed: 2.5, autoSeek: false });
+});
 test('AI设置可选择服务商与模型，保存不调用模型', async ({ context }) => {
   const h = await createHarness(context, { mode: 'quiz', autoRun: false });
   await h.page.getByRole('button', { name: 'AI 设置', exact: true }).click();

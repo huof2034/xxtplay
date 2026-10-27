@@ -2,7 +2,7 @@
 
 验收分为两部分：**可以在本机自动复现的工程检查**，以及**必须由用户在本人的学习通账号、浏览器和真实课程中确认的平台验收**。自动化模拟页面通过，不等于真实课程、真实 AI 服务或平台回执已经验收。
 
-记录时间：2026-10-27（Asia/Shanghai）。版本：`0.2.0`。
+记录时间：2026-10-27（Asia/Shanghai）。版本：`0.3.0`。
 
 ## 一、自动化检查
 
@@ -11,12 +11,14 @@
 | TypeScript | `npm run typecheck` | 通过 |
 | 单元测试 | `npm test` | 55 项通过 |
 | 构建 | `npm run build` | 通过，生成 `dist/xxtplay.user.js`、`dist/xxtplay.meta.js` |
-| Playwright 模拟页面 | `$env:PW_CHANNEL='chrome'; npm run test:e2e` | 19 项通过（本机 Playwright Chromium 下载未完成，使用系统 Chrome） |
+| Playwright 模拟页面 | `$env:PW_CHANNEL='chrome'; npm run test:e2e` | 24 项通过（本机 Playwright Chromium 下载未完成，使用系统 Chrome） |
 | 发布包与哈希 | `npm run package` | 见下方 SHA-256 |
 
 覆盖到的关键行为：
 
 - 自动播放被策略拒绝时自动静音并继续；`play()` 首次中断后重试；播放期间 AI 调用数为 0。
+- 未加载的任务点会自动打开并继续；平台允许时自动倍速并记录日志；平台允许拖动时跳到结尾；设置面板可拖动并记住位置。
+- 播放设置页修改立即保存，倍速与拖动开关生效。
 - 单选、多选、判断、填空、简答、图片题回填；有未解决题目时不提交整份作业。
 - 考试确认前零交卷请求；刷新不继承确认；跨域考试中的普通作业仍按考试处理。
 - 讨论只发布一次；文档阅读不调用 AI；复习只在用户点击后调用 `summary`。
@@ -25,23 +27,26 @@
 
 ### 发布资产 SHA-256
 
-在 `npm run package` 之后由 `release/SHA256SUMS.txt` 记录；本文件在发布前需与之一致。当前脚本均为 `0.2.0`。
+在 `npm run package` 之后由 `release/SHA256SUMS.txt` 记录；本文件在发布前需与之一致。当前脚本均为 `0.3.0`。
 
 ```text
-26CF43F9EF17B8C27E4BF17BB15DF1F996604C5EB056894A14B248F3F0B856DB  xxtplay.user.js
-12E562BCE8BC4C23AAC5118F749363D65C87E2D6771DF6193664B43AB1A8A605  xxtplay.meta.js
+98F9A80EB54D87D62CDF41C151E0BC06EB1C41ECA193DAAD00E4BCC637761B75  xxtplay.user.js
+347C2B72D37A4D422F5906863CE38880416D375442427BBBA1E17BA2B10E9A63  xxtplay.meta.js
 EBCCC892B63AC5F195562BD6848B657B0DE21D01931BA2C93F615A5C62A8C330  LICENSE
 B8FA9B4FB74D3AA38876DE4016FCE2F0821352B68854EE61EBAD86B566158A08  THIRD_PARTY_NOTICES.md
-F15DD9C2F99353DCB42D52F043A18824CD49B19D2CF358E0E243EFD62A8C1ADB  README.md
+B9DD47EEE267778E31B02C74E24D8F9678BE239C511F3D0D666A3F9BD057F8DC  README.md
 ```
 
-`Get-FileHash release/xxtplay.user.js -Algorithm SHA256` 已核对为 `26CF43F9EF17B8C27E4BF17BB15DF1F996604C5EB056894A14B248F3F0B856DB`。注意：README、许可证或通知文件若在打包后修改，需重新运行 `npm run package` 并更新本文件中的哈希。
+`Get-FileHash release/xxtplay.user.js -Algorithm SHA256` 已核对为 `98F9A80EB54D87D62CDF41C151E0BC06EB1C41ECA193DAAD00E4BCC637761B75`。注意：README、许可证或通知文件若在打包后修改，需重新运行 `npm run package` 并更新本文件中的哈希。
 
 ## 二、真实平台验收（待用户完成）
 
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | 真实课程自动播放 | 待验收 | 更新油猴中的脚本后进入视频任务，观察是否无需点击即开始 |
+| 自动打开下一个任务点 | 待验收 | 完成一个视频后观察是否自动打开/加载下一个任务点 |
+| 平台允许时自动倍速 | 待验收 | 查看任务点是否有 `doublespeed` 允许；日志应显示「已设置为 2×」 |
+| 平台允许时自动拖动 | 待验收 | 页面无「不可拖拽」时观察是否跳转；若平台不确认通过，任务应保留待办 |
 | 5 分钟后台连续播放 | 待验收 | 见下方步骤；浏览器冻结或系统休眠会中断 |
 | 平台任务点回执 | 待验收 | 以任务点图标/平台状态为准，不以脚本日志替代 |
 | 真实题目（各题型） | 待验收 | 建议在非关键作业中验证 |
@@ -52,7 +57,7 @@ F15DD9C2F99353DCB42D52F043A18824CD49B19D2CF358E0E243EFD62A8C1ADB  README.md
 
 ### 1. 自动播放
 
-1. 在 Tampermonkey 中更新/重新安装 `0.2.0` 脚本。
+1. 在 Tampermonkey 中更新/重新安装 `0.3.0` 脚本。
 2. 打开视频任务，确认服务商与 Key 配置无误，启动队列。
 3. 观察视频是否自动开始；如果出现提示条「浏览器要求一次点击」，点击视频画面一次，确认随后自动继续。
 4. 记录 Chrome/Edge 版本、是否静音、日志中的 `NotAllowedError`/`AbortError` 提示。
@@ -102,13 +107,13 @@ gh auth login
 gh repo create huof2034/xxtplay --public --source=. --remote=origin --push
 git push origin main --tags
 npm run package
-gh release create v0.2.0 release/* --title "xxtplay 0.2.0" --notes-file CHANGELOG.md
+gh release create v0.3.0 release/* --title "xxtplay 0.3.0" --notes-file CHANGELOG.md
 ```
 
 发布后匿名下载 `xxtplay.user.js` 和 `xxtplay.meta.js`，用 `SHA256SUMS.txt` 核对哈希，并确认 Tampermonkey 能通过 `@updateURL` 检查更新。
 
 ## 三、结论
 
-- 工程检查：通过（55 单元 + 19 模拟 e2e + 构建）。
+- 工程检查：通过（55 单元 + 24 模拟 e2e + 构建）。
 - 真实平台验收：未完成，不能以自动化结果代替。
 - 公开发布：未完成，等待用户 GitHub 登录与确认。

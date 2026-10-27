@@ -75,6 +75,7 @@ export class ChaoxingAdapter {
   readonly win: SiteWindow;
   inheritedExam = false;
   private chapterElements = new Map<string, HTMLElement>();
+  private lastTaskOpenKey = ''; private lastTaskOpenAt = 0;
   constructor(readonly doc: Document = document, win = publicWindow()) { this.win = win; }
   isExam(): boolean {
     return this.inheritedExam || localExam(this.doc) || relatedWindows(this.win).some(win => localExam(win.document));
@@ -196,6 +197,54 @@ export class ChaoxingAdapter {
     el.click(); return true;
   }
   chapterTitle(): string { return text(this.doc.querySelector('.posCatalog_active,.chapter-title,.chapter_name')) || this.doc.title; }
+  private cardsDocument(): Document | undefined {
+    for (const frame of this.doc.querySelectorAll<HTMLIFrameElement>('#iframe,iframe[src*="knowledge/cards"],iframe[src*="knowledge/card"]')) {
+      try { if (frame.contentDocument?.body) return frame.contentDocument; } catch { /* Cross-origin cards cannot be opened from here. */ }
+    }
+    return undefined;
+  }
+  /** Open/scroll the first unfinished task point so its player iframe starts loading. Returns false when nothing safe was found. */
+  openNextTask(): boolean {
+    const docs: Document[] = [this.doc];
+    const cards = this.cardsDocument(); if (cards && cards !== this.doc) docs.push(cards);
+    for (const doc of docs) {
+      const points = [...doc.querySelectorAll<HTMLElement>('.ans-attach-ct')].filter(point =>
+        !point.classList.contains('ans-job-finished') &&
+        !point.querySelector('.icon_Completed,.icon_completed,.icon_yiwanc,.catalog-complete') &&
+        visible(point));
+      for (const point of points) {
+        const icon = point.querySelector<HTMLElement>('.ans-job-icon');
+        const frame = point.querySelector<HTMLIFrameElement>('iframe');
+        const key = frame?.getAttribute('jobid') || point.id || text(point).slice(0, 80);
+        if (key === this.lastTaskOpenKey && Date.now() - this.lastTaskOpenAt < 30_000) continue;
+        this.lastTaskOpenKey = key; this.lastTaskOpenAt = Date.now();
+        try { point.scrollIntoView({ block: 'center' }); } catch { /* The cards page may have been replaced. */ }
+        try { (icon || point).click(); return true; } catch { return false; }
+      }
+    }
+    return false;
+  }
+  conditionText(job: PlatformJob): string {
+    const parts: string[] = [];
+    for (const win of relatedWindows(this.win)) {
+      try {
+        for (const el of win.document.querySelectorAll('.task-condition,.task-requirement,.watch-requirement,.video-requirement,.job-requirement')) {
+          if (el.getAttribute('data-jobid') && el.getAttribute('data-jobid') !== job.jobId) continue;
+          parts.push(text(el));
+        }
+      } catch { /* Cross-origin parent frames are not inspected. */ }
+    }
+    return parts.join(' ');
+  }
+  speedAllowed(job: PlatformJob): boolean {
+    const value = job.metadata?.doublespeed ?? job.metadata?.property?.doublespeed;
+    return value === true || value === 1 || String(value).toLowerCase() === 'true' || String(value) === '1';
+  }
+  seekAllowed(job: PlatformJob): boolean {
+    const value = job.metadata?.fastforward ?? job.metadata?.property?.fastforward;
+    const enabled = value === true || value === 1 || String(value).toLowerCase() === 'true' || String(value) === '1';
+    return enabled && !/不可拖拽|不可拖动|禁止拖动|不允许拖动|不可快进|禁止快进/.test(this.conditionText(job));
+  }
   questionHandles(): QuestionHandle[] {
     const roots = [...this.doc.querySelectorAll<HTMLElement>('.TiMu,.questionLi,.question-item')].filter(el => !el.parentElement?.closest('.TiMu,.questionLi,.question-item'));
     return roots.map((root, index) => this.questionHandle(root, index));

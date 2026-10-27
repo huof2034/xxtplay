@@ -11,7 +11,29 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
   if (!media || !/^(VIDEO|AUDIO)$/.test(media.tagName)) throw new Error('未找到媒体元素');
   const requirement = adapter.requirement(job);
   repo.log('info', `${course.efficiencyMode ? '效率模式' : '完整播放'}：${job.title}；${requirementLabel(requirement)}`);
-  media.muted = repo.config().muted;
+  const config = repo.config();
+  const playback = config.playback;
+  const rate = Math.min(3, Math.max(1.25, Number(playback.speed) || 2));
+  let speedEnabled = playback.autoSpeed && adapter.speedAllowed(job);
+  let rateLogged = false;
+  const enforceRate = () => {
+    if (!speedEnabled) return;
+    if (Math.abs(media.playbackRate - rate) < 0.01) return;
+    try { media.playbackRate = rate; if (!rateLogged) { repo.log('info', `平台允许倍速，已设置为 ${rate}×`); rateLogged = true; } }
+    catch { speedEnabled = false; }
+  };
+  if (playback.autoSpeed && !speedEnabled) repo.log('info', '平台未声明允许倍速，按原速播放');
+  let seekAttempted = false;
+  const seekNearEnd = () => {
+    if (seekAttempted || !playback.autoSeek) return;
+    if (!adapter.seekAllowed(job) || !Number.isFinite(media.duration) || media.duration <= 5) return;
+    const target = media.duration - 1;
+    if (target <= media.currentTime + 2) return;
+    seekAttempted = true;
+    try { media.currentTime = target; repo.log('info', `页面允许拖动，已跳到接近结尾（${Math.floor(target)} 秒）`); }
+    catch { repo.log('warn', '播放器拒绝拖动，继续正常播放'); }
+  };
+  media.muted = config.muted;
   let watched = repo.state().tasks[taskId]?.progress?.watched || 0;
   let previous = media.currentTime; let previousWall = performance.now();
   let lastMovement = Date.now(); let lastCheckpoint = 0; let ended = media.ended; let wake = () => {};
@@ -39,11 +61,13 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       throw error;
     }
   };
-  media.addEventListener('timeupdate', timeupdate); media.addEventListener('ended', onEnded); media.addEventListener('pause', wakeUp); media.addEventListener('error', wakeUp);
+  media.addEventListener('timeupdate', timeupdate); media.addEventListener('ended', onEnded); media.addEventListener('pause', wakeUp); media.addEventListener('error', wakeUp); media.addEventListener('ratechange', enforceRate);
   signal.addEventListener('abort', onAbort, { once: true });
   try {
     checkpoint();
+    enforceRate();
     await beginPlayback();
+    seekNearEnd();
     const started = Date.now();
     while (true) {
       throwIfAborted(signal);
@@ -51,6 +75,7 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       const blocked = adapter.blocked(); if (blocked) throw new HumanRequired(blocked);
       if (!media.isConnected) throw new Error('媒体页面已切换，已保存断点');
       if (media.error) throw new Error(`媒体加载失败（${media.error.code}），保留待办`);
+      seekNearEnd();
       const target = watchTargetMet(requirement, { duration: media.duration, watched, ended: ended || media.ended }, course.efficiencyMode);
       if ((target || (course.efficiencyMode && requirement.known)) && Date.now() - lastVerify >= (target ? 5000 : 20_000)) {
         lastVerify = Date.now(); verified = await adapter.verifyPassed(job);
@@ -75,7 +100,7 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       });
     }
   } finally {
-    media.removeEventListener('timeupdate', timeupdate); media.removeEventListener('ended', onEnded); media.removeEventListener('pause', wakeUp); media.removeEventListener('error', wakeUp);
+    media.removeEventListener('timeupdate', timeupdate); media.removeEventListener('ended', onEnded); media.removeEventListener('pause', wakeUp); media.removeEventListener('error', wakeUp); media.removeEventListener('ratechange', enforceRate);
     signal.removeEventListener('abort', onAbort);
     media.pause(); checkpoint();
   }

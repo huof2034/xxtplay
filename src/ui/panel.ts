@@ -8,7 +8,7 @@ import { requirementLabel } from '../core/efficiency';
 export interface PanelActions { start(): void; stop(): void; retry(): void; scan(): void; summarize(courseKey: string): Promise<void>; exportNote(courseKey: string): void }
 const CSS = `
 :host{all:initial;font:13px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;color:#25324a;position:fixed;right:20px;bottom:20px;z-index:2147483645;color-scheme:light}
-*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #dbe2ef;border-radius:8px;background:white;color:#344366;padding:7px 11px}button:hover{background:#edf1ff}button:disabled{cursor:default;opacity:.5}button.primary{background:#5065d9;border-color:#5065d9;color:white}button.danger{color:#bb3d4a}.panel{width:390px;max-width:calc(100vw - 32px);border-radius:16px;box-shadow:0 12px 60px #23305240;border:1px solid #e1e6f1;background:#f7f9fd;overflow:hidden}.head{background:#fff;padding:15px 17px;display:flex;align-items:center;justify-content:space-between}.brand{font-size:16px;font-weight:700;letter-spacing:.3px}.version{font-size:11px;color:#96a0b4;margin-left:7px}.tabs{display:flex;border-bottom:1px solid #e2e8f2;padding:0 12px;background:#fff}.tabs button{border:0;border-radius:0;padding:10px 13px;color:#8490a9;background:transparent}.tabs button.active{color:#5065d9;border-bottom:2px solid #5065d9;font-weight:600}.body{padding:14px;max-height:65vh;overflow:auto}.card{padding:12px;border:1px solid #e0e6f0;border-radius:10px;background:white;margin:0 0 10px}.muted{color:#8490a9;font-size:12px}.hint{background:#edf1ff;border-radius:8px;padding:9px 10px;color:#586891;font-size:12px;margin-bottom:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.spread{justify-content:space-between}.course-title{font-weight:600;overflow-wrap:anywhere;max-width:280px}.options{margin-top:10px;display:flex;gap:16px}.options label{display:flex;gap:5px;align-items:center;font-size:12px}label{cursor:pointer}input[type=checkbox]{accent-color:#586bdd}input[type=text],input[type=password],input[type=url],select{width:100%;background:#f8faff;border:1px solid #dce3ef;border-radius:7px;padding:8px 10px;color:#263859;outline:none}input:focus,select:focus{border-color:#667ce3}select{padding-right:26px}.field [hidden]{display:none}.provider-note{margin:-2px 0 8px;color:#8490a9;font-size:12px;line-height:1.5}.link{color:#5065d9;text-decoration:none;font-size:12px}.link:hover{text-decoration:underline}.field{display:block;margin:0 0 11px}.field span{display:block;margin:0 0 4px;color:#62708b;font-size:12px}.toolbar{display:flex;gap:8px;margin-bottom:12px}.toolbar button{flex:1}.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;background:#edf1fb;color:#6b7b9b}.status{font-size:13px;font-weight:600}.warning{color:#b16d20}.success{color:#267e63}.error{color:#bd4351}.log{padding:6px 0;border-bottom:1px solid #eef1f8;font-size:12px;overflow-wrap:anywhere}.log time{color:#9aa5ba;margin-right:7px}.small-button{padding:1px 6px;font-size:12px}.footer{padding:10px 14px;border-top:1px solid #e3e8f0;font-size:11px;color:#97a2b6;background:#fff}.bubble{background:#5065d9;color:white;box-shadow:0 5px 24px #465ccd55;border:0;padding:11px 17px;border-radius:22px;font-weight:600}pre{white-space:pre-wrap;word-break:break-word;font:12px/1.65 inherit;margin:7px 0}.meter{height:5px;background:#e9edf7;border-radius:4px;margin:8px 0;overflow:hidden}.meter>div{background:#6479e1;height:100%}.empty{text-align:center;color:#96a0b4;padding:22px 10px}.ack{display:flex;gap:8px;margin:12px 0}.exam{border-top:4px solid #e7ac56}.exam h3{margin:0 0 8px;font-size:15px}.exam .body{max-height:60vh}.notice{white-space:pre-wrap;overflow-wrap:anywhere}
+*{box-sizing:border-box}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #dbe2ef;border-radius:8px;background:white;color:#344366;padding:7px 11px}button:hover{background:#edf1ff}button:disabled{cursor:default;opacity:.5}button.primary{background:#5065d9;border-color:#5065d9;color:white}button.danger{color:#bb3d4a}.panel{width:390px;max-width:calc(100vw - 32px);border-radius:16px;box-shadow:0 12px 60px #23305240;border:1px solid #e1e6f1;background:#f7f9fd;overflow:hidden}.head{background:#fff;padding:15px 17px;display:flex;align-items:center;justify-content:space-between;cursor:move;user-select:none}.brand{font-size:16px;font-weight:700;letter-spacing:.3px}.version{font-size:11px;color:#96a0b4;margin-left:7px}.tabs{display:flex;border-bottom:1px solid #e2e8f2;padding:0 12px;background:#fff}.tabs button{border:0;border-radius:0;padding:10px 13px;color:#8490a9;background:transparent}.tabs button.active{color:#5065d9;border-bottom:2px solid #5065d9;font-weight:600}.body{padding:14px;max-height:65vh;overflow:auto}.card{padding:12px;border:1px solid #e0e6f0;border-radius:10px;background:white;margin:0 0 10px}.muted{color:#8490a9;font-size:12px}.hint{background:#edf1ff;border-radius:8px;padding:9px 10px;color:#586891;font-size:12px;margin-bottom:12px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.spread{justify-content:space-between}.course-title{font-weight:600;overflow-wrap:anywhere;max-width:280px}.options{margin-top:10px;display:flex;gap:16px}.options label{display:flex;gap:5px;align-items:center;font-size:12px}label{cursor:pointer}input[type=checkbox]{accent-color:#586bdd}input[type=text],input[type=password],input[type=url],select{width:100%;background:#f8faff;border:1px solid #dce3ef;border-radius:7px;padding:8px 10px;color:#263859;outline:none}input:focus,select:focus{border-color:#667ce3}select{padding-right:26px}.field [hidden]{display:none}.provider-note{margin:-2px 0 8px;color:#8490a9;font-size:12px;line-height:1.5}.link{color:#5065d9;text-decoration:none;font-size:12px}.link:hover{text-decoration:underline}.field{display:block;margin:0 0 11px}.field span{display:block;margin:0 0 4px;color:#62708b;font-size:12px}.toolbar{display:flex;gap:8px;margin-bottom:12px}.toolbar button{flex:1}.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:5px;background:#edf1fb;color:#6b7b9b}.status{font-size:13px;font-weight:600}.warning{color:#b16d20}.success{color:#267e63}.error{color:#bd4351}.log{padding:6px 0;border-bottom:1px solid #eef1f8;font-size:12px;overflow-wrap:anywhere}.log time{color:#9aa5ba;margin-right:7px}.small-button{padding:1px 6px;font-size:12px}.footer{padding:10px 14px;border-top:1px solid #e3e8f0;font-size:11px;color:#97a2b6;background:#fff}.bubble{background:#5065d9;color:white;box-shadow:0 5px 24px #465ccd55;border:0;padding:11px 17px;border-radius:22px;font-weight:600}pre{white-space:pre-wrap;word-break:break-word;font:12px/1.65 inherit;margin:7px 0}.meter{height:5px;background:#e9edf7;border-radius:4px;margin:8px 0;overflow:hidden}.meter>div{background:#6479e1;height:100%}.empty{text-align:center;color:#96a0b4;padding:22px 10px}.ack{display:flex;gap:8px;margin:12px 0}.exam{border-top:4px solid #e7ac56}.exam h3{margin:0 0 8px;font-size:15px}.exam .body{max-height:60vh}.notice{white-space:pre-wrap;overflow-wrap:anywhere}
 `;
 function element<K extends keyof HTMLElementTagNameMap>(tag: K, content = '', className = ''): HTMLElementTagNameMap[K] { const el = document.createElement(tag); if (content) el.textContent = content; if (className) el.className = className; return el; }
 function button(title: string, action: () => unknown, cls = ''): HTMLButtonElement { const b = element('button', title, cls); b.type = 'button'; b.addEventListener('click', () => { void action(); }); return b; }
@@ -17,11 +17,12 @@ const STATUS: Record<string, string> = { queued: '等待运行', running: '正�
 export class Panel {
   private host = element('div'); private root: ShadowRoot; private container = element('div', '', 'panel'); private body = element('div', '', 'body'); private tab = 'courses'; private collapsed = false; private scheduled = false;
   private fields?: { base: HTMLInputElement; key: HTMLInputElement; text: HTMLSelectElement; vision: HTMLSelectElement; muted: HTMLInputElement };
-  private notice = '';
+  private notice = ''; private settingsHold = false;
   constructor(private repo: Repository, private actions: PanelActions) {
     this.host.id = 'xxtplay-root'; this.root = this.host.attachShadow({ mode: 'closed' });
     const style = element('style'); style.textContent = CSS; this.root.append(style); document.documentElement.append(this.host);
-    this.collapsed = repo.storage.get('xxtplay:v1:ui:collapsed', false); this.shell();
+    this.collapsed = repo.storage.get('xxtplay:v1:ui:collapsed', false); this.applyPosition(); this.shell();
+    window.addEventListener('resize', () => this.clampPosition());
   }
   show(): void { this.collapsed = false; this.repo.storage.set('xxtplay:v1:ui:collapsed', false); this.shell(); }
   schedule(): void { if (this.scheduled) return; this.scheduled = true; setTimeout(() => { this.scheduled = false; this.render(); }, 150); }
@@ -31,13 +32,14 @@ export class Panel {
     this.container = element('div', '', 'panel');
     const head = element('div', '', 'head'); const logo = element('div', 'xxtplay · 学习助手', 'brand'); logo.append(element('span', `v${__VERSION__}`, 'version'));
     head.append(logo, button('收起', () => { this.collapsed = true; this.repo.storage.set('xxtplay:v1:ui:collapsed', true); this.shell(); }, 'small-button'));
+    this.makeDraggable(head);
     const tabs = element('div', '', 'tabs');
-    for (const [id, name] of [['courses', '课程'], ['run', '运行'], ['ai', 'AI 设置'], ['notes', '复习']]) { const b = button(name, () => { this.tab = id; this.fields = undefined; this.shell(); }, this.tab === id ? 'active' : ''); tabs.append(b); }
-    this.body = element('div', '', 'body'); this.container.append(head, tabs, this.body, element('div', '浏览器需保持打开 · AI 仅用于答题与复习整理', 'footer')); this.root.append(this.container); this.render();
+    for (const [id, name] of [['courses', '课程'], ['play', '播放'], ['run', '运行'], ['ai', 'AI 设置'], ['notes', '复习']]) { const b = button(name, () => { this.tab = id; this.fields = undefined; this.settingsHold = false; this.shell(); }, this.tab === id ? 'active' : ''); tabs.append(b); }
+    this.body = element('div', '', 'body'); this.container.append(head, tabs, this.body, element('div', '浏览器需保持打开 · AI 仅用于答题与复习整理', 'footer')); this.root.append(this.container); this.render(); this.clampPosition();
   }
   private render(): void {
     if (this.collapsed) return;
-    if (this.tab === 'ai' && this.fields) return; // A progress heartbeat must not erase a key being typed.
+    if ((this.tab === 'ai' || this.tab === 'play') && this.settingsHold) return; // A progress heartbeat must not erase a key being typed.
     this.body.replaceChildren(); const state = this.repo.state();
     if (this.notice) this.body.append(element('div', this.notice, 'hint notice'));
     if (this.tab === 'courses') {
@@ -63,6 +65,7 @@ export class Panel {
       this.body.append(element('div', `AI 调用 ${count} 次 · 累计 ${tokens.toLocaleString()} tokens（服务商返回值）`, 'muted'));
       for (const log of state.logs.slice(-35).reverse()) { const line = element('div', '', `log ${log.level}`); line.append(element('time', new Date(log.at).toLocaleTimeString('zh-CN', { hour12: false })), document.createTextNode(log.message)); this.body.append(line); }
     } else if (this.tab === 'ai') this.aiSettings();
+    else if (this.tab === 'play') this.playbackSettings();
     else {
       this.body.append(element('div', '仅处理已开启复习资料的课程。视频无可读字幕时会标注缺失，不推测未提供的内容。', 'hint'));
       for (const course of state.courses.filter(c => c.summaryEnabled)) {
@@ -80,7 +83,64 @@ export class Panel {
     }
     if (task.reason) card.append(element('div', task.reason, 'muted notice')); return card;
   }
+  private playbackSettings(): void {
+    this.settingsHold = true;
+    const playback = this.repo.config().playback;
+    this.body.append(element('div', '自动打开任务点、倍速和拖动都受平台限制；完成仍以平台回执为准。', 'hint'));
+    const option = (name: string, checked: boolean, label = name) => { const line = element('label', '', 'row'); line.style.margin = '0 0 9px'; const input = element('input'); input.type = 'checkbox'; input.checked = checked; input.setAttribute('aria-label', name); line.append(input, document.createTextNode(label)); this.body.append(line); return input; };
+    const autoOpen = option('自动打开下一个任务点', playback.autoOpen, '自动打开下一个任务点（无需手动点视频）');
+    const autoSpeed = option('平台允许时自动倍速', playback.autoSpeed);
+    const speedField = element('label', '', 'field'); const speed = element('select'); speed.setAttribute('aria-label', '倍速');
+    for (const value of [1.25, 1.5, 1.75, 2, 2.5, 3]) { const choice = element('option', `${value}×`); choice.value = String(value); speed.append(choice); }
+    speed.value = String(playback.speed); speed.disabled = !playback.autoSpeed; speedField.append(element('span', '倍速'), speed); this.body.append(speedField);
+    const autoSeek = option('平台允许时自动拖到结尾', playback.autoSeek, '平台允许时自动拖到结尾（可能不计入观看时长）');
+    this.body.append(element('div', '页面出现“不可拖拽”、平台未声明的倍速或拖动时不会执行；拖动后平台不确认通过，任务会保留待办。', 'muted'));
+    const notice = element('div', '', 'muted'); notice.style.marginTop = '10px';
+    const save = () => { const config = this.repo.config(); config.playback = { autoOpen: autoOpen.checked, autoSpeed: autoSpeed.checked, speed: Number(speed.value) || 2, autoSeek: autoSeek.checked }; this.repo.saveConfig(config); notice.textContent = '播放设置已保存。'; speed.disabled = !autoSpeed.checked; };
+    for (const input of [autoOpen, autoSpeed, autoSeek]) input.addEventListener('change', save);
+    speed.addEventListener('change', save); this.body.append(notice);
+  }
+  private applyPosition(): void {
+    const position = this.repo.storage.get<{ left: number; top: number } | null>('xxtplay:v1:ui:position', null);
+    if (!position || !Number.isFinite(position.left) || !Number.isFinite(position.top)) return;
+    this.host.style.left = `${Math.max(0, Math.round(position.left))}px`; this.host.style.top = `${Math.max(0, Math.round(position.top))}px`;
+    this.host.style.right = 'auto'; this.host.style.bottom = 'auto';
+  }
+  private clampPosition(): void {
+    if (!this.host.style.left && !this.host.style.top) return;
+    const rect = this.host.getBoundingClientRect(); if (!rect.width) return;
+    const left = Math.max(0, Math.min(rect.left, window.innerWidth - Math.min(rect.width, window.innerWidth - 8)));
+    const top = Math.max(0, Math.min(rect.top, window.innerHeight - Math.min(rect.height, window.innerHeight - 8)));
+    this.host.style.left = `${Math.round(left)}px`; this.host.style.top = `${Math.round(top)}px`;
+  }
+  private makeDraggable(handle: HTMLElement): void {
+    let start: { x: number; y: number; left: number; top: number } | undefined;
+    handle.addEventListener('pointerdown', event => {
+      if ((event.target as Element).closest('button,a,input,select')) return;
+      const rect = this.host.getBoundingClientRect(); start = { x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+      try { handle.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional. */ }
+      event.preventDefault();
+    });
+    handle.addEventListener('pointermove', event => {
+      if (!start) return;
+      const rect = this.host.getBoundingClientRect();
+      const left = Math.max(0, Math.min(start.left + event.clientX - start.x, window.innerWidth - Math.min(rect.width, window.innerWidth - 8)));
+      const top = Math.max(0, Math.min(start.top + event.clientY - start.y, window.innerHeight - Math.min(rect.height, window.innerHeight - 8)));
+      this.host.style.left = `${Math.round(left)}px`; this.host.style.top = `${Math.round(top)}px`; this.host.style.right = 'auto'; this.host.style.bottom = 'auto';
+    });
+    const finish = (event: PointerEvent) => {
+      if (!start) return; start = undefined;
+      try { handle.releasePointerCapture(event.pointerId); } catch { /* Already released. */ }
+      const rect = this.host.getBoundingClientRect(); this.repo.storage.set('xxtplay:v1:ui:position', { left: Math.round(rect.left), top: Math.round(rect.top) });
+    };
+    handle.addEventListener('pointerup', finish); handle.addEventListener('pointercancel', finish);
+    handle.addEventListener('dblclick', event => {
+      if ((event.target as Element).closest('button,a,input,select')) return;
+      this.repo.storage.delete('xxtplay:v1:ui:position'); this.host.style.left = ''; this.host.style.top = ''; this.host.style.right = '20px'; this.host.style.bottom = '20px';
+    });
+  }
   private aiSettings(): void {
+    this.settingsHold = true;
     const cfg = this.repo.config(); const preset = getProvider(cfg.ai.provider);
     this.body.append(element('div', '密钥只存于油猴存储。API 请求仅发生在题目作答和已开启的复习整理中；保存设置不会调用 AI。自定义接口首次连接时需在油猴中授权该域名。', 'hint'));
     const field = (name: string, value: string, type = 'text') => { const label = element('label', '', 'field'); const input = element('input'); input.type = type; input.value = value; input.autocomplete = 'off'; input.setAttribute('aria-label', name); label.append(element('span', name), input); this.body.append(label); return input; };

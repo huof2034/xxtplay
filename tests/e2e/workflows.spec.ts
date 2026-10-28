@@ -154,6 +154,13 @@ test('跨域章节连续播放两个视频并进入下一章节，始终不调�
   expect(h.state().logs.some(log => /已切换章节：第二章/.test(log.message))).toBe(true);
   expect(h.apiCalls).toHaveLength(0);
 });
+test('章节图标未更新但任务已通过时仍进入下一章节', async ({ context }) => {
+  test.setTimeout(150_000);
+  const h = await createHarness(context, { mode: 'catalogue', twoChapters: true, crossOrigin: true, noChapterMark: true });
+  await expect.poll(() => Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed').length, { timeout: 140_000 }).toBe(4);
+  await expect(h.page.locator('#cur11')).toHaveClass(/posCatalog_active/);
+  expect(h.state().logs.some(log => /已切换章节：第二章/.test(log.message))).toBe(true);
+});
 test('跨域非任务视频不会被当作必做任务播放', async ({ context }) => {
   const h = await createHarness(context, { mode: 'catalogue', crossOrigin: true, nonTaskVideo: true });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout: 35_000 }).toBe(true);

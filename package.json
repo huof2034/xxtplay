@@ -1,6 +1,6 @@
 {
   "name": "xxtplay",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "private": true,
   "description": "学习通课程队列、AI 答题和可选复习资料油猴脚本",
   "type": "module",

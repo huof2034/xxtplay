@@ -4,7 +4,7 @@ xxtplay 是一个运行在 Chrome / Edge + Tampermonkey 上的学习通（超星
 
 > 本项目用于个人学习进度管理。请遵守学校规定与平台服务条款，不要用于替考、代刷或绕过验证码、人脸验证等安全措施。脚本按平台真实回执判断完成，不把「模拟测试通过」当作真实课程验收。
 
-当前稳定版本：`0.5.6`；源码中的 `0.5.7` 为测试候选版。公开版本见 <https://github.com/huof2034/xxtplay>，真实验收状态见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
+当前稳定版本：`0.5.6`；源码中的 `0.5.8` 为测试候选版。公开版本见 <https://github.com/huof2034/xxtplay>，真实验收状态见 [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md)。
 
 ## 功能
 

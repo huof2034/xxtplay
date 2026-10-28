@@ -56,13 +56,29 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
     return Number.isFinite(duration) && duration > 0 ? Math.min(duration, total) : total;
   };
   let previous = media.currentTime; let previousWall = performance.now();
-  let lastMovement = Date.now(); let lastCheckpoint = 0; let ended = media.ended; let wake = () => {};
+  let lastMovement = Date.now(); let lastProgress = Date.now(); let lastCheckpoint = 0; let ended = media.ended; let wake = () => {};
   let playFailures = 0; let lastVerify = 0; let verified = false;
+  let lastPauseLog = 0; let lastPlayAttempt = 0; let lastStallLog = 0;
+  const mediaState = () => `位置 ${Math.floor(media.currentTime)}/${Number.isFinite(media.duration) ? Math.floor(media.duration) : '?'} 秒，就绪 ${media.readyState}，网络 ${media.networkState}，页面${document.visibilityState === 'hidden' ? '后台' : '前台'}${media.error ? `，媒体错误 ${media.error.code}` : ''}`;
   const wakeUp = () => { wake(); };
+  const onPause = () => {
+    if (media.ended || signal.aborted || Date.now() - lastPauseLog < 4_000) return;
+    lastPauseLog = Date.now();
+    repo.log('info', `播放暂停诊断：${mediaState()}`);
+  };
+  const onStalled = () => {
+    if (signal.aborted || Date.now() - lastStallLog < 8_000) return;
+    lastStallLog = Date.now();
+    repo.log('info', `媒体缓冲或停滞：${mediaState()}`);
+  };
+  const onVisibility = () => {
+    if (signal.aborted) return;
+    repo.log('info', `页面切换到${document.visibilityState === 'hidden' ? '后台' : '前台'}：${mediaState()}`);
+  };
   const timeupdate = () => {
     const now = performance.now(); const delta = media.currentTime - previous; const wall = (now - previousWall) / 1000;
     if (!media.seeking && delta > 0 && delta <= Math.max(3, wall * Math.max(media.playbackRate, 1) + 1)) {
-      watched += delta; lastMovement = Date.now(); playFailures = 0;
+      watched += delta; lastMovement = Date.now(); lastProgress = Date.now(); playFailures = 0;
     }
     previous = media.currentTime; previousWall = now;
     if (Date.now() - lastCheckpoint > 8000) checkpoint();
@@ -85,6 +101,7 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
     }
   };
   media.addEventListener('timeupdate', timeupdate); media.addEventListener('ended', onEnded); media.addEventListener('pause', wakeUp); media.addEventListener('error', wakeUp); media.addEventListener('ratechange', enforceRate);
+  media.addEventListener('pause', onPause); media.addEventListener('stalled', onStalled); media.addEventListener('waiting', onStalled); document.addEventListener('visibilitychange', onVisibility);
   signal.addEventListener('abort', onAbort, { once: true });
   try {
     checkpoint();
@@ -114,9 +131,17 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
         if (!await inlineQuestions()) throw new HumanRequired('视频弹题未能完成，等待人工处理');
         lastMovement = Date.now(); await beginPlayback();
       } else if (media.paused || Date.now() - lastMovement > 45_000) {
-        if (++playFailures > 3) throw new HumanRequired('媒体多次暂停或卡顿，请检查页面后重试');
-        await beginPlayback();
-        lastMovement = Date.now();
+        const hidden = document.visibilityState === 'hidden';
+        // Background tabs are routinely paused by the browser or the site's player.
+        // Retry patiently instead of turning one hidden-tab pause into a hard failure.
+        if (hidden) {
+          if (Date.now() - lastProgress > 10 * 60_000) throw new HumanRequired('后台标签页长时间没有播放进度，请保持页面可见后重试');
+          if (Date.now() - lastPlayAttempt > 5_000) { lastPlayAttempt = Date.now(); await beginPlayback(); }
+        } else {
+          if (++playFailures > 3) throw new HumanRequired(`媒体多次暂停或卡顿，请检查页面后重试（${mediaState()}）`);
+          lastPlayAttempt = Date.now(); await beginPlayback();
+          lastMovement = Date.now();
+        }
       }
       if (Number.isFinite(media.duration) && Date.now() - started > (media.duration * 2 + 600) * 1000) throw new Error('播放超过预期时长，保留待办');
       await new Promise<void>(resolve => {
@@ -126,6 +151,7 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
     }
   } finally {
     media.removeEventListener('timeupdate', timeupdate); media.removeEventListener('ended', onEnded); media.removeEventListener('pause', wakeUp); media.removeEventListener('error', wakeUp); media.removeEventListener('ratechange', enforceRate);
+    media.removeEventListener('pause', onPause); media.removeEventListener('stalled', onStalled); media.removeEventListener('waiting', onStalled); document.removeEventListener('visibilitychange', onVisibility);
     signal.removeEventListener('abort', onAbort);
     media.pause(); checkpoint();
   }

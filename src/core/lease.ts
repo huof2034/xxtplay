@@ -1,7 +1,7 @@
 import type { StorageEngine } from '../storage';
 import { sleep } from '../utils';
 interface Lease { owner: string; expiresAt: number }
-/** Cross-tab lease is paired with the browser Web Lock in the coordinator. */
+/** Cross-tab lease stored in GM storage; acquisition waits briefly then re-checks ownership. */
 export class AccountLease {
   readonly owner = crypto.randomUUID();
   readonly key: string;

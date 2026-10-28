@@ -23,6 +23,7 @@ export class Runtime {
   private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0; private chapterTabAttempts = 0; private lastQueueLog = 0;
   private openAttempts = 0; private openAttemptChapter = '';
   private navigationAttempts = 0; private navigationTarget = '';
+  private startedAt = Date.now(); private taskContextWarned = false;
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -124,6 +125,10 @@ export class Runtime {
   private updateTask(id: string, patch: Partial<TaskRecord>): void { this.repo.update(s => { if (s.tasks[id]) Object.assign(s.tasks[id], patch, { updatedAt: Date.now() }); }); }
   private async tick(): Promise<void> {
     if (!this.bus.examContextKnown() || !this.bus.taskContextKnown()) return;
+    if (!this.topLevel && !this.bus.inheritedTask() && !this.taskContextWarned && Date.now() - this.startedAt > 7_000) {
+      this.taskContextWarned = true;
+      this.repo.log('warn', '未收到父页面任务身份，按当前播放器页面继续判断');
+    }
     this.adapter.inheritedExam = this.bus.inheritedExam();
     const course = this.course();
     if (!course) {
@@ -316,10 +321,17 @@ export class Runtime {
         if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
         return;
       }
+      // A chapter whose task points all passed is complete even when the platform
+      // does not paint the catalog "completed" icon. `emptyChapter` only describes a
+      // chapter with no required task points, so it must not gate normal chapters.
       if (!reports.some(r => r.snapshot.emptyChapter)) {
-        const reason = '等待平台确认当前章节完成，暂不跳过';
-        if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
-        return;
+        const required = jobs.filter(job => job.required);
+        const allPassed = required.every(job => job.passed || state.tasks[this.taskId(job, course)]?.status === 'completed');
+        if (required.length > 0 && !allPassed) {
+          const reason = '等待平台确认当前章节完成，暂不跳过';
+          if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
+          return;
+        }
       }
     }
     this.busy = true;

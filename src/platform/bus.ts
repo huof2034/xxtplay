@@ -18,6 +18,7 @@ export class FrameBus {
   onTaskContextRequest?: (source: Window) => FrameTaskContext | undefined;
   onTaskContext?: (context: FrameTaskContext | undefined) => void;
   private taskContextReceived = false;
+  private readonly startedAt = Date.now();
   private parentTask?: FrameTaskContext;
   private pendingActions = new Map<string, { source: Window; resolve: (ok: boolean) => void; timer: ReturnType<typeof setTimeout> }>();
   private parentExam: boolean | undefined;
@@ -37,9 +38,15 @@ export class FrameBus {
     }
   }
   requestContext(): void { if (window.top !== window) window.top?.postMessage({ channel: CHANNEL, type: 'hello', id: this.id }, '*'); }
-  examContextKnown(): boolean { return this.parentExam !== undefined; }
+  examContextKnown(): boolean {
+    // A parent frame that failed to answer must not freeze playback forever.
+    return this.topLevel || this.parentExam !== undefined || Date.now() - this.startedAt > 5_000;
+  }
   inheritedExam(): boolean { return this.parentExam === true; }
-  taskContextKnown(): boolean { return this.topLevel || this.taskContextReceived; }
+  taskContextKnown(): boolean {
+    // Never let a missing/unscripted parent frame freeze a player forever.
+    return this.topLevel || this.taskContextReceived || Date.now() - this.startedAt > 5_000;
+  }
   inheritedTask(): FrameTaskContext | undefined { return this.parentTask; }
   private requestTaskContext(): void { if (!this.topLevel) window.parent.postMessage({ channel: CHANNEL, type: 'task-parent-hello', id: this.id }, '*'); }
   private requestExamContext(): void { if (!this.topLevel) window.parent.postMessage({ channel: CHANNEL, type: 'exam-parent-hello', id: this.id }, '*'); }

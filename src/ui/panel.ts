@@ -4,6 +4,7 @@ import { AI_PROVIDERS, getProvider, type ModelOption } from '../ai/providers';
 import { completionUrl } from '../ai/client';
 import { downloadText, errorMessage } from '../utils';
 import { requirementLabel } from '../core/efficiency';
+import { courseEntryUrl } from '../platform/courses';
 import { THEME_ART, THEME_CSS, themeName } from './themes';
 
 export interface PanelActions { start(): void; stop(): void; retry(): void; scan(): void; refresh(): Promise<void>; summarize(courseKey: string): Promise<void>; exportNote(courseKey: string): void }
@@ -68,8 +69,9 @@ export class Panel {
           const meter = element('div', '', 'meter'); const fill = element('div'); fill.style.width = `${Math.max(0, Math.min(100, course.progress.percent))}%`; meter.append(fill); card.append(meter);
           card.append(element('div', `${course.progress.text}${course.progress.total ? ` · ${Math.round(course.progress.percent)}%` : ''}${course.teacher ? ` · ${course.teacher}` : ''}`, 'muted'));
         } else card.append(element('div', `进度未读取${course.teacher ? ` · ${course.teacher}` : ''}`, 'muted'));
-        if (course.url) {
-          const open = element('a', '打开课程', 'link'); open.href = course.url; open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open);
+        const entry = courseEntryUrl(course);
+        if (entry) {
+          const open = element('a', '打开课程', 'link'); open.href = entry; open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open);
         }
         card.append(options); this.body.append(card);
       }

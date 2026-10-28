@@ -155,6 +155,15 @@ test('首页读取全部课程、进度并允许勾选', async ({ context }) => 
   await panel.getByRole('button', { name: '开始队列' }).click();
   await expect(h.page).toHaveURL(/mycourse\/(?:studentstudy|stu)\?course(?:i|I)d=100/, { timeout: 15_000 });
 });
+test('主页旧课程入口通过平台中转并自动打开章节', async ({ context }) => {
+  const h = await createHarness(context, { mode:'home', autoRun:false, legacyHomeEntry:true, homeWithChapter:true });
+  await h.page.getByRole('button', { name:'开始队列' }).click();
+  await expect(h.page).toHaveURL(/enc=fixture/, { timeout:20_000 });
+  await expect(h.page.getByText('无效的参数')).toHaveCount(0);
+  await expect.poll(() => h.state().logs.some(log => /已打开课程章节/.test(log.message)), { timeout:25_000 }).toBe(true);
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout:35_000 }).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
 test('运行队列显示课程名称、章节和打开链接', async ({ context }) => {
   const h = await createHarness(context, { mode: 'catalogue' });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);

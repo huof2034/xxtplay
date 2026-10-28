@@ -248,6 +248,13 @@ export class ChaoxingAdapter {
     if (!el || !visible(el) || this.isExam()) return false;
     el.click(); return true;
   }
+  /** Open only the platform's chapter tab from the course landing page. */
+  openChapterTab(): boolean {
+    if (!/\/mycourse\/stu\/?$/.test(new URL(this.doc.URL).pathname) || this.isExam() || this.blocked()) return false;
+    const tab = this.doc.querySelector<HTMLElement>('a[title="章节"][data-url*="/mycourse/studentcourse"]');
+    if (!visible(tab)) return false;
+    tab.click(); return true;
+  }
   chapterTitle(): string {
     for (const win of relatedWindows(this.win)) {
       try { const title = text(win.document.querySelector('.posCatalog_active,.chapter-title,.chapter_name')); if (title) return title; } catch { /* Cross-origin parent. */ }

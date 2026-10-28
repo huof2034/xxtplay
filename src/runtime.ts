@@ -10,17 +10,17 @@ import { readDocument, collectSubtitles } from './core/documents';
 import { SummaryService } from './core/summary';
 import { ANSWER_SYSTEM, validateAnswer } from './core/answer';
 import { ChaoxingAdapter, courseLinks, discoverCourse, readAccountId, type PlatformJob } from './platform/chaoxing';
-import { entryToCourse } from './platform/courses';
+import { courseEntryUrl, entryToCourse } from './platform/courses';
 import { FrameBus } from './platform/bus';
 import { Panel, examReview } from './ui/panel';
-import { downloadText, errorMessage, isChaoxingHost, shortHash, sleep } from './utils';
+import { downloadText, errorMessage, shortHash, sleep } from './utils';
 
 export class Runtime {
   readonly adapter = new ChaoxingAdapter();
   readonly ai: AiClient; readonly worker: QuestionWorker; readonly summary: SummaryService; readonly lease: AccountLease;
   private panel?: Panel; private busy = false; private control?: AbortController; private interval?: ReturnType<typeof setInterval>; private observer?: MutationObserver; private scanTimer?: ReturnType<typeof setTimeout>;
   private lastNavigation = Date.now(); private examPanel?: ReturnType<typeof examReview>; private examTask?: PlatformJob; private gate?: ExamSubmissionGate; private removeListener?: () => void;
-  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0;
+  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0; private chapterTabAttempts = 0;
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -51,7 +51,7 @@ export class Runtime {
       for (const course of discovered) {
         const existing = s.courses.find(c => c.key === course.key);
         if (!existing) { s.courses.push({ ...course, order: s.courses.length }); continue; }
-        existing.title = course.title || existing.title;
+        if (course.title && course.title !== '未命名课程') existing.title = course.title;
         if (course.cpi) existing.cpi = course.cpi;
         if (course === current && course.url) existing.url = course.url;
         else if (!existing.url) existing.url = course.url;
@@ -124,7 +124,9 @@ export class Runtime {
       if (this.topLevel && this.repo.state().autoRun) {
         const next = [...this.repo.state().courses].filter(item => item.enabled && item.url).sort((a, b) => a.order - b.order)[0];
         if (next && Date.now() - this.lastCourseStart > 8_000) {
-          this.lastCourseStart = Date.now(); this.repo.log('info', `打开课程：${next.title}`); location.assign(next.url);
+          const entry = courseEntryUrl(next);
+          if (!entry) { this.repo.update(s => { s.autoRun = false; s.pausedReason = '课程入口不可用，请从学习通课程列表打开一次'; }); return; }
+          this.lastCourseStart = Date.now(); this.repo.log('info', `打开课程：${next.title}`); location.assign(entry);
         }
       }
       return;
@@ -251,8 +253,12 @@ export class Runtime {
     const catalogue = reports.filter(r => r.snapshot.chapters.length).sort((a, b) => b.snapshot.chapters.length - a.snapshot.chapters.length)[0];
     if (!catalogue) {
       if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) { this.lastTaskOpen = Date.now(); this.repo.log('info', '已尝试打开当前页面的任务点，等待播放器加载'); }
+      else if (this.repo.config().playback.autoOpen && this.chapterTabAttempts < 3 && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openChapterTab()) {
+        this.chapterTabAttempts++; this.lastTaskOpen = Date.now(); this.repo.log('info', '已打开课程章节，等待章节列表加载');
+      }
       return;
     }
+    this.chapterTabAttempts = 0;
     const activeChapter = catalogue.snapshot.chapters.find(c => c.current);
     if (activeChapter && !activeChapter.completed && jobs.length === 0) {
       if (Date.now() - this.lastTaskOpen < 8_000) {
@@ -283,8 +289,8 @@ export class Runtime {
       if (course.summaryEnabled) await this.summary.generate(course.key).catch(e => this.repo.log('warn', `复习整理待办：${errorMessage(e)}`));
       const selected = [...this.repo.state().courses].filter(c => c.enabled).sort((a, b) => a.order - b.order); const index = selected.findIndex(c => c.key === course.key); const following = selected[index + 1];
       if (following) {
-        const u = new URL(following.url); if (!isChaoxingHost(u.hostname)) throw new Error('课程链接不属于学习通');
-        this.repo.log('info', `切换课程：${following.title}`); this.repo.update(s => { s.activeCourseKey = following.key; }); location.assign(u.href);
+        const entry = courseEntryUrl(following); if (!entry) throw new Error('课程入口不可用，请从学习通课程列表打开一次');
+        this.repo.log('info', `切换课程：${following.title}`); this.repo.update(s => { s.activeCourseKey = following.key; }); location.assign(entry);
       } else { this.repo.update(s => { s.autoRun = false; s.pausedReason = '本轮可执行任务已处理；请在“运行”中查看平台确认结果和待办'; }); this.repo.log('info', '本轮课程队列已结束，未把待办算作完成'); }
     } finally { this.busy = false; this.lease.release(); }
   }

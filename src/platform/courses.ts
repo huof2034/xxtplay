@@ -1,5 +1,5 @@
 import type { Course, CourseProgress } from '../types';
-import { normalizeText, safeUrl } from '../utils';
+import { isChaoxingHost, normalizeText, safeUrl } from '../utils';
 
 export interface CatalogEntry {
   id: string; classId: string; cpi: string; title: string;
@@ -7,10 +7,23 @@ export interface CatalogEntry {
 }
 
 export function courseHome(id: string, classId: string, cpi = ''): string {
-  const url = new URL('https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu');
+  const url = new URL('https://mooc1.chaoxing.com/visit/stucoursemiddle');
   url.searchParams.set('courseid', id);
   url.searchParams.set('clazzid', classId);
   if (cpi) url.searchParams.set('cpi', cpi);
+  url.searchParams.set('ismooc2', '1'); url.searchParams.set('v', '2');
+  return url.href;
+}
+
+/** Old versions stored an incomplete /stu URL. Route it through the platform's course entry. */
+export function courseEntryUrl(course: Course): string {
+  const url = safeUrl(course.url);
+  if (!url || !isChaoxingHost(url.hostname)) return '';
+  if (/\/visit\/stucoursemiddle\/?$/.test(url.pathname) && !/^\d+$/.test(url.searchParams.get('cpi') || '')) return '';
+  if (/\/mycourse\/stu\/?$/.test(url.pathname) && !url.searchParams.get('enc')) {
+    if (!/^\d+$/.test(course.id) || !/^\d+$/.test(course.classId) || !/^\d+$/.test(course.cpi)) return '';
+    return courseHome(course.id, course.classId, course.cpi);
+  }
   return url.href;
 }
 

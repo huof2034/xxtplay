@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courseHome, entryToCourse, parseCourseListHtml, parseCourseProgressHtml, progressFromText } from '../../src/platform/courses';
+import { courseEntryUrl, courseHome, entryToCourse, parseCourseListHtml, parseCourseProgressHtml, progressFromText } from '../../src/platform/courses';
 
 describe('课程列表与任务点进度解析', () => {
   it('解析课程列表中的课程名、教师和进度', () => {
@@ -24,10 +24,19 @@ describe('课程列表与任务点进度解析', () => {
   });
   it('课程主页地址包含课程与班级定位参数', () => {
     const url = new URL(courseHome('100', '200', '300'));
-    expect(url.pathname).toBe('/mooc2-ans/mycourse/stu');
+    expect(url.pathname).toBe('/visit/stucoursemiddle');
     expect(url.searchParams.get('courseid')).toBe('100');
     expect(url.searchParams.get('clazzid')).toBe('200');
     expect(url.searchParams.get('cpi')).toBe('300');
+    expect(url.searchParams.get('ismooc2')).toBe('1'); expect(url.searchParams.get('v')).toBe('2');
     expect(entryToCourse({ id: '1', classId: '2', cpi: '3', title: '课程' }, 4)).toMatchObject({ key: '1:2', enabled: false, order: 4 });
+  });
+  it('旧版缺少认证参数的课程地址改走平台入口，外部地址不使用', () => {
+    const course = entryToCourse({ id: '100', classId: '200', cpi: '300', title: '课程' }, 0);
+    course.url = 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=100&clazzid=200&cpi=300';
+    expect(courseEntryUrl(course)).toBe(courseHome('100', '200', '300'));
+    course.url = 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=100&clazzid=200&enc=example';
+    expect(courseEntryUrl(course)).toBe(course.url);
+    course.url = 'https://example.invalid/'; expect(courseEntryUrl(course)).toBe('');
   });
 });

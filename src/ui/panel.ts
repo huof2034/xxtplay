@@ -103,7 +103,8 @@ export class Panel {
     if (task.progress) {
       const { current, duration, requirement } = task.progress; const meter = element('div', '', 'meter'); const fill = element('div'); fill.style.width = `${duration ? Math.min(100, current / duration * 100) : 0}%`; meter.append(fill); card.append(meter, element('div', `${Math.floor(current)} / ${Math.floor(duration)} 秒 · ${requirementLabel(requirement)}`, 'muted'));
     }
-    const link = task.url && !/\/ananas\/modules\//.test(task.url) ? task.url : course?.url;
+    const target = task.url && !/\/ananas\/modules\//.test(task.url) ? task.url : course?.url;
+    const link = course && target ? courseEntryUrl({ ...course, url: target }) : '';
     if (link) { const open = element('a', '打开页面', 'link'); open.href = link; open.target = '_blank'; open.rel = 'noopener noreferrer'; card.append(open); }
     if (task.reason) card.append(element('div', task.reason, 'muted notice')); return card;
   }

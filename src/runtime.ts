@@ -51,7 +51,7 @@ export class Runtime {
       for (const course of discovered) {
         const existing = s.courses.find(c => c.key === course.key);
         if (!existing) { s.courses.push({ ...course, order: s.courses.length }); continue; }
-        if (course.title && course.title !== '未命名课程') existing.title = course.title;
+        if (course.title && !['未命名课程', '温馨提示'].includes(course.title) && !this.adapter.blocked()) existing.title = course.title;
         if (course.cpi) existing.cpi = course.cpi;
         if (course === current && course.url) existing.url = course.url;
         else if (!existing.url) existing.url = course.url;

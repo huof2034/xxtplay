@@ -37,6 +37,8 @@ describe('课程列表与任务点进度解析', () => {
     expect(courseEntryUrl(course)).toBe(courseHome('100', '200', '300'));
     course.url = 'https://mooc2-ans.chaoxing.com/mooc2-ans/mycourse/stu?courseid=100&clazzid=200&enc=example';
     expect(courseEntryUrl(course)).toBe(course.url);
+    course.url = 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=10&courseId=100&clazzid=200';
+    expect(courseEntryUrl(course)).toBe(courseHome('100', '200', '300'));
     course.url = 'https://example.invalid/'; expect(courseEntryUrl(course)).toBe('');
   });
 });

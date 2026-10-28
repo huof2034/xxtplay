@@ -4,7 +4,7 @@ import type { Answer, Course, CourseProgress, Question, QuestionKind, TaskKind, 
 import type { QuestionHandle } from '../core/question-worker';
 import { parseWatchRequirement } from '../core/efficiency';
 import { parseCourseCards, parseCourseListHtml, parseCourseProgressHtml, progressFromDocument, type CatalogEntry } from './courses';
-import { normalizeText, safeUrl, shortHash, sleep, sourceLink } from '../utils';
+import { isChaoxingHost, normalizeText, safeUrl, shortHash, sleep, sourceLink } from '../utils';
 
 type SiteWindow = Window & Record<string, any>;
 interface Attachment { isPassed?: boolean; job?: boolean; jobid?: string; property?: Record<string, any>; [key: string]: any }
@@ -125,7 +125,11 @@ export class ChaoxingAdapter {
   }
   studyUrl(): string {
     for (const win of relatedWindows(this.win)) {
-      try { if (/\/mycourse\/studentstudy/.test(win.location.href)) return sourceLink(win.location.href); } catch { /* Cross-origin. */ }
+      try {
+        const url = new URL(win.location.href);
+        // A chapter link requires the platform's own enc parameter; keep it only in private GM task state.
+        if (/\/mycourse\/studentstudy/.test(url.pathname) && isChaoxingHost(url.hostname) && url.searchParams.has('enc')) return url.href;
+      } catch { /* Cross-origin. */ }
     }
     return sourceLink(this.doc.URL);
   }
@@ -136,6 +140,7 @@ export class ChaoxingAdapter {
     if (/passport2?\.chaoxing\.com|\/login(?:\/|\?|$)/.test(this.doc.URL) || visible(this.doc.querySelector('#loginForm'))) return '登录已失效，请先在学习通登录';
     if ([...this.doc.querySelectorAll('#captcha,.captcha,.yidun_modal,.verify-wrap,.yidun_popup,.faceRecognition,.face-recognition,#faceRecognition')].some(visible)) return '检测到验证码或人脸验证，等待人工处理';
     if ([...this.doc.querySelectorAll('iframe')].some(el => /face|captcha/i.test(el.src) && visible(el))) return '检测到验证码或人脸验证，等待人工处理';
+    if (/(?:enc\s*校验失败|无效的参数)/i.test(this.doc.body?.textContent || '')) return '课程入口校验失败，请通过课程列表重新打开';
     return undefined;
   }
   attachmentContext(): { owner?: SiteWindow; attachments: Attachment[] } {
@@ -174,6 +179,9 @@ export class ChaoxingAdapter {
     for (const [index, media] of [...this.doc.querySelectorAll<HTMLMediaElement>('video,audio')].entries()) {
       // A player belongs to its own frame; an outer wrapper with iframes is not a second task.
       if (media.closest('#xxtplay-root')) continue;
+      // Player internals may contain inert helper media without any source.
+      // Wait until a source is actually attached before treating it as a task.
+      if (!media.currentSrc && !media.getAttribute('src') && !media.querySelector('source[src]')) continue;
       add(media.tagName === 'AUDIO' ? 'audio' : 'video', media, String(index));
     }
     if (this.doc.querySelector('.TiMu,.questionLi,.question-item')) add(this.isExam() ? 'exam' : 'quiz');

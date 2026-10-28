@@ -20,7 +20,7 @@ export function courseEntryUrl(course: Course): string {
   const url = safeUrl(course.url);
   if (!url || !isChaoxingHost(url.hostname)) return '';
   if (/\/visit\/stucoursemiddle\/?$/.test(url.pathname) && !/^\d+$/.test(url.searchParams.get('cpi') || '')) return '';
-  if (/\/mycourse\/stu\/?$/.test(url.pathname) && !url.searchParams.get('enc')) {
+  if (/\/mycourse\/(?:stu|studentstudy)\/?$/.test(url.pathname) && !url.searchParams.get('enc')) {
     if (!/^\d+$/.test(course.id) || !/^\d+$/.test(course.classId) || !/^\d+$/.test(course.cpi)) return '';
     return courseHome(course.id, course.classId, course.cpi);
   }

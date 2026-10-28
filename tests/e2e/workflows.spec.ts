@@ -73,6 +73,11 @@ test('真实媒体完整播放：嵌套iframe、无Key、零AI调用', async ({ 
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
   expect(h.apiCalls).toHaveLength(0); expect(Object.values(h.state().tasks).find(t => t.kind === 'video')?.progress?.current).toBeGreaterThan(7);
 });
+test('播放器无音源的辅助音频不会占用课程队列', async ({ context }) => {
+  const h = await createHarness(context, { mode:'video', extraEmptyAudio:true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout:30_000 }).toBe(true);
+  expect(Object.values(h.state().tasks).some(t => t.kind === 'audio')).toBe(false);
+});
 test('效率模式：读取90%，等待延迟的平台确认', async ({ context }) => {
   const h = await createHarness(context, { mode: 'video', efficient: true, receiptDelay: 2000 });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.progress?.requirement.known), { timeout: 10_000 }).toBe(true);
@@ -171,7 +176,7 @@ test('运行队列显示课程名称、章节和打开链接', async ({ context 
   const card = h.page.locator('#xxtplay-root .card').filter({ hasText: '测试视频' }).first();
   await expect(card).toContainText('测试课程甲');
   await expect(card).toContainText('第一章');
-  await expect(card.getByRole('link', { name: '打开页面' })).toHaveAttribute('href', /studentstudy/);
+  await expect(card.getByRole('link', { name: '打开页面' })).toHaveAttribute('href', /studentstudy.*enc=fixture/);
 });
 test('播放设置可修改并立即保存', async ({ context }) => {
   const h = await createHarness(context, { mode: 'quiz', autoRun: false });

@@ -4,13 +4,13 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course, type PlaybackConfig } from '../../src/types';
 
-export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; earlyReceipt?: boolean; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; legacyHomeEntry?: boolean; homeWithChapter?: boolean; playback?: Partial<PlaybackConfig> }
+export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; earlyReceipt?: boolean; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; legacyHomeEntry?: boolean; homeWithChapter?: boolean; extraEmptyAudio?: boolean; playback?: Partial<PlaybackConfig> }
 export interface Harness {
   page: Page; context: BrowserContext; values: Map<string, any>; apiCalls: { body: any; purpose: string }[]; submissions: { jobId: string; kind: string }[];
   state(): AccountState; close(): Promise<void>;
 }
 const ACCOUNT_KEY = 'xxtplay:v1:account:111';
-export const course = (id = '100'): Course => ({ id, classId: '200', cpi: '300', key: `${id}:200`, title: id === '100' ? '测试课程甲' : '测试课程乙', url: `https://mooc1.chaoxing.com/mycourse/studentstudy?courseId=${id}&clazzid=200&chapterId=10&cpi=300`, enabled: true, efficiencyMode: false, summaryEnabled: false, order: id === '100' ? 0 : 1 });
+export const course = (id = '100'): Course => ({ id, classId: '200', cpi: '300', key: `${id}:200`, title: id === '100' ? '测试课程甲' : '测试课程乙', url: `https://mooc1.chaoxing.com/mycourse/studentstudy?courseId=${id}&clazzid=200&chapterId=10&cpi=300&enc=fixture`, enabled: true, efficiencyMode: false, summaryEnabled: false, order: id === '100' ? 0 : 1 });
 
 async function mediaBytes(): Promise<Buffer> {
   const file = path.resolve('.cache/fixture.webm');
@@ -114,7 +114,7 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
     }
     if (u.pathname.includes('/ananas/modules/video')) {
       const mark = `parent.mArg.attachments[0].isPassed=true;parent.document.querySelector('.ans-attach-ct').classList.add('ans-job-finished');void window.__fixturePass('${jobId}');top.postMessage({platform:'passed',jobId:'${jobId}'},'*')`;
-      await route.fulfill({ contentType: 'text/html', body: shell('<video id="video_html5_api" muted controls src="/fixture.webm"></video>', `const video=document.querySelector('video');let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*${options.earlyReceipt ? '.1' : '.9'}){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
+      await route.fulfill({ contentType: 'text/html', body: shell(`${options.extraEmptyAudio ? '<audio></audio>' : ''}<video id="video_html5_api" muted controls src="/fixture.webm"></video>`, `const video=document.querySelector('video');let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*${options.earlyReceipt ? '.1' : '.9'}){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
     }
     if (options.mode === 'video' || options.mode === 'catalogue') {
       const host = options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';
@@ -133,7 +133,7 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
     await route.fulfill({ contentType: 'text/html', body: shell(`<input id="userId" value="111" type="hidden"><h1>${exam ? '测试考试' : '测试作业'}</h1>${questionHtml(options.unknownQuestion)}${button}`, `document.querySelector('#${submitId}').onclick=()=>document.querySelector('[role=dialog]').style.display='block';document.querySelector('#confirm').onclick=()=>{void window.__fixtureSubmit('${jobId}','${exam ? 'exam' : 'quiz'}');document.querySelector('[role=dialog]').style.display='none';${options.noReceipt ? '' : "document.querySelector('.testTit_status').textContent='已提交';document.querySelector('.testTit_status').classList.add('testTit_status_complete')"}};`) });
   });
   const page = await context.newPage();
-  const routePath = options.mode === 'home' ? '/base' : options.mode === 'exam' ? '/mooc-ans/exam/test/reVersionTestStartNew?examId=55&courseId=100&clazzid=200' : options.mode === 'discussion' ? '/bbs/discuss?courseId=100&clazzid=200' : '/mycourse/studentstudy?courseId=100&clazzid=200&chapterId=10';
+  const routePath = options.mode === 'home' ? '/base' : options.mode === 'exam' ? '/mooc-ans/exam/test/reVersionTestStartNew?examId=55&courseId=100&clazzid=200' : options.mode === 'discussion' ? '/bbs/discuss?courseId=100&clazzid=200' : '/mycourse/studentstudy?courseId=100&clazzid=200&chapterId=10&enc=fixture';
   const host = options.mode === 'home' ? 'https://i.chaoxing.com' : options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';
   await page.goto(host + routePath); await expect(page.locator('#xxtplay-root')).toBeAttached({ timeout: 20_000 });
   return { page, context, values, apiCalls, submissions, state: () => values.get(ACCOUNT_KEY), close: async () => { await context.close(); } };

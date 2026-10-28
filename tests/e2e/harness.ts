@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course, type PlaybackConfig } from '../../src/types';
 
-export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; playback?: Partial<PlaybackConfig> }
+export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; earlyReceipt?: boolean; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; playback?: Partial<PlaybackConfig> }
 export interface Harness {
   page: Page; context: BrowserContext; values: Map<string, any>; apiCalls: { body: any; purpose: string }[]; submissions: { jobId: string; kind: string }[];
   state(): AccountState; close(): Promise<void>;
@@ -105,7 +105,7 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
     }
     if (u.pathname.includes('/ananas/modules/video')) {
       const mark = `parent.mArg.attachments[0].isPassed=true;parent.document.querySelector('.ans-attach-ct').classList.add('ans-job-finished');void window.__fixturePass('${jobId}');top.postMessage({platform:'passed',jobId:'${jobId}'},'*')`;
-      await route.fulfill({ contentType: 'text/html', body: shell('<video id="video_html5_api" muted controls src="/fixture.webm"></video>', `const video=document.querySelector('video');let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*.9){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
+      await route.fulfill({ contentType: 'text/html', body: shell('<video id="video_html5_api" muted controls src="/fixture.webm"></video>', `const video=document.querySelector('video');let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*${options.earlyReceipt ? '.1' : '.9'}){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
     }
     if (options.mode === 'video' || options.mode === 'catalogue') {
       const host = options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';

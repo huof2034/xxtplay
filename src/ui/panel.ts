@@ -4,6 +4,7 @@ import { AI_PROVIDERS, getProvider, type ModelOption } from '../ai/providers';
 import { completionUrl } from '../ai/client';
 import { downloadText, errorMessage } from '../utils';
 import { requirementLabel } from '../core/efficiency';
+import { THEME_ART, THEME_CSS, themeName } from './themes';
 
 export interface PanelActions { start(): void; stop(): void; retry(): void; scan(): void; refresh(): Promise<void>; summarize(courseKey: string): Promise<void>; exportNote(courseKey: string): void }
 const CSS = `
@@ -21,22 +22,30 @@ export class Panel {
   private notice = ''; private settingsHold = false;
   constructor(private repo: Repository, private actions: PanelActions) {
     this.host.id = 'xxtplay-root'; this.root = this.host.attachShadow({ mode: 'closed' });
-    const style = element('style'); style.textContent = CSS; this.root.append(style); document.documentElement.append(this.host);
+    const style = element('style'); style.textContent = CSS + THEME_CSS; this.root.append(style); document.documentElement.append(this.host);
     this.collapsed = repo.storage.get('xxtplay:v1:ui:collapsed', false); this.applyPosition(); this.shell();
     window.addEventListener('resize', () => this.clampPosition());
   }
   show(): void { this.collapsed = false; this.repo.storage.set('xxtplay:v1:ui:collapsed', false); this.shell(); }
   schedule(): void { if (this.scheduled) return; this.scheduled = true; setTimeout(() => { this.scheduled = false; this.render(); }, 150); }
   private shell(): void {
+    this.host.dataset.theme = this.repo.config().ai.provider;
     for (const child of [...this.root.children]) if (child.tagName !== 'STYLE') child.remove();
     if (this.collapsed) { this.root.append(button('📚 xxtplay', () => this.show(), 'bubble')); return; }
     this.container = element('div', '', 'panel');
-    const head = element('div', '', 'head'); const logo = element('div', 'xxtplay · 学习助手', 'brand'); logo.append(element('span', `v${__VERSION__}`, 'version'));
-    head.append(logo, button('收起', () => { this.collapsed = true; this.repo.storage.set('xxtplay:v1:ui:collapsed', true); this.shell(); }, 'small-button'));
+    const scene = element('div', '', 'scene'); scene.setAttribute('aria-hidden', 'true');
+    const art = THEME_ART[this.repo.config().ai.provider]; if (art) scene.style.backgroundImage = `url("${art}")`;
+    this.container.append(scene);
+    const head = element('div', '', 'head'); const identity = element('div', '', 'identity');
+    const mark = element('span', '', 'theme-mark'); mark.setAttribute('aria-hidden', 'true');
+    const logo = element('div', '', 'brand'); logo.append(element('div', 'xxtplay', 'brand-name'), element('div', '学习助手', 'brand-subtitle'));
+    identity.append(mark, logo);
+    const headerEnd = element('div', '', 'header-end'); headerEnd.append(element('span', themeName(this.repo.config().ai.provider), 'theme-badge'), button('收起', () => { this.collapsed = true; this.repo.storage.set('xxtplay:v1:ui:collapsed', true); this.shell(); }, 'small-button'));
+    head.append(identity, headerEnd);
     this.makeDraggable(head);
     const tabs = element('div', '', 'tabs');
     for (const [id, name] of [['courses', '课程'], ['play', '播放'], ['run', '运行'], ['ai', 'AI 设置'], ['notes', '复习']]) { const b = button(name, () => { this.tab = id; this.fields = undefined; this.settingsHold = false; this.shell(); }, this.tab === id ? 'active' : ''); tabs.append(b); }
-    this.body = element('div', '', 'body'); this.container.append(head, tabs, this.body, element('div', '浏览器需保持打开 · AI 仅用于答题与复习整理', 'footer')); this.root.append(this.container); this.render(); this.clampPosition();
+    this.body = element('div', '', 'body'); this.body.dataset.tab = this.tab; this.container.append(head, tabs, this.body, element('div', '浏览器需保持打开 · AI 仅用于答题与复习整理', 'footer')); this.root.append(this.container); this.render(); this.clampPosition();
   }
   private render(): void {
     if (this.collapsed) return;
@@ -99,18 +108,17 @@ export class Panel {
   private playbackSettings(): void {
     this.settingsHold = true;
     const playback = this.repo.config().playback;
-    this.body.append(element('div', '自动打开任务点、倍速和拖动都受平台限制；完成仍以平台回执为准。', 'hint'));
+    this.body.append(element('div', '自动打开任务点和倍速受平台限制；完成仍以平台回执为准。为保证观看时长，不会自动拖动视频。', 'hint'));
     const option = (name: string, checked: boolean, label = name) => { const line = element('label', '', 'row'); line.style.margin = '0 0 9px'; const input = element('input'); input.type = 'checkbox'; input.checked = checked; input.setAttribute('aria-label', name); line.append(input, document.createTextNode(label)); this.body.append(line); return input; };
     const autoOpen = option('自动打开下一个任务点', playback.autoOpen, '自动打开下一个任务点（无需手动点视频）');
     const autoSpeed = option('平台允许时自动倍速', playback.autoSpeed);
     const speedField = element('label', '', 'field'); const speed = element('select'); speed.setAttribute('aria-label', '倍速');
     for (const value of [1.25, 1.5, 1.75, 2, 2.5, 3]) { const choice = element('option', `${value}×`); choice.value = String(value); speed.append(choice); }
     speed.value = String(playback.speed); speed.disabled = !playback.autoSpeed; speedField.append(element('span', '倍速'), speed); this.body.append(speedField);
-    const autoSeek = option('平台允许时自动拖到结尾', playback.autoSeek, '平台允许时自动拖到结尾（可能不计入观看时长）');
-    this.body.append(element('div', '页面出现“不可拖拽”、平台未声明的倍速或拖动时不会执行；拖动后平台不确认通过，任务会保留待办。', 'muted'));
+    this.body.append(element('div', '倍速仅在平台明确允许时使用；原有自动拖动设置已停用。', 'muted'));
     const notice = element('div', '', 'muted'); notice.style.marginTop = '10px';
-    const save = () => { const config = this.repo.config(); config.playback = { autoOpen: autoOpen.checked, autoSpeed: autoSpeed.checked, speed: Number(speed.value) || 2, autoSeek: autoSeek.checked }; this.repo.saveConfig(config); notice.textContent = '播放设置已保存。'; speed.disabled = !autoSpeed.checked; };
-    for (const input of [autoOpen, autoSpeed, autoSeek]) input.addEventListener('change', save);
+    const save = () => { const config = this.repo.config(); config.playback = { autoOpen: autoOpen.checked, autoSpeed: autoSpeed.checked, speed: Number(speed.value) || 2, autoSeek: false }; this.repo.saveConfig(config); notice.textContent = '播放设置已保存。'; speed.disabled = !autoSpeed.checked; };
+    for (const input of [autoOpen, autoSpeed]) input.addEventListener('change', save);
     speed.addEventListener('change', save); this.body.append(notice);
   }
   private applyPosition(): void {
@@ -199,8 +207,14 @@ export class Panel {
       try {
         completionUrl(base.value.trim()); const textModel = text.value(); const visionModel = vision.value(); if (!textModel) throw new Error('请填写文本模型名称');
         const provider = providerSelect.value as AiProviderId; const config = this.repo.config();
-        if (provider !== config.ai.provider && !key.value.trim()) throw new Error('切换服务商后请填写该服务商的 API Key');
+        let endpointChanged = true;
+        try { endpointChanged = new URL(base.value.trim()).origin !== new URL(config.ai.baseUrl).origin; } catch { /* New endpoints require their own key. */ }
+        if ((provider !== config.ai.provider || endpointChanged) && !key.value.trim()) throw new Error('切换服务商或 API 地址后请填写对应的 API Key');
+        const changed = provider !== config.ai.provider || textModel !== config.ai.textModel || visionModel !== config.ai.visionModel;
         config.ai = { provider, baseUrl: base.value.trim(), apiKey: key.value.trim() || config.ai.apiKey, textModel, visionModel }; config.muted = muted.checked; this.repo.saveConfig(config);
+        this.host.dataset.theme = provider; const badge = this.container.querySelector('.theme-badge'); if (badge) badge.textContent = themeName(provider);
+        const scene = this.container.querySelector<HTMLElement>('.scene');
+        if (scene && changed) { scene.style.backgroundImage = THEME_ART[provider] ? `url("${THEME_ART[provider]}")` : ''; scene.classList.remove('scene-in'); void scene.offsetWidth; scene.classList.add('scene-in'); }
         key.value = ''; key.placeholder = config.ai.apiKey ? '已配置；留空保留现有密钥' : '未配置密钥'; this.notice = '设置已保存。保存设置不会调用 AI。'; const hint = element('div', this.notice, 'hint'); this.body.append(hint);
       } catch (e) { this.body.append(element('div', errorMessage(e), 'error')); }
     }, 'primary'); save.style.marginTop = '12px'; this.body.append(save);

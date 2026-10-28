@@ -52,7 +52,7 @@ export interface AccountState {
 
 export const DEFAULT_CONFIG: GlobalConfig = {
   version: 1, ai: { provider: 'deepseek', baseUrl: 'https://api.deepseek.com', apiKey: '', textModel: 'deepseek-flash', visionModel: 'deepseek-flash' },
-  playback: { autoOpen: true, autoSpeed: true, speed: 2, autoSeek: true },
+  playback: { autoOpen: true, autoSpeed: true, speed: 2, autoSeek: false },
   notifications: true, muted: true,
 };
 export const emptyAccount = (accountId: string): AccountState => ({

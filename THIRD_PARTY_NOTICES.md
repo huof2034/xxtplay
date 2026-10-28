@@ -11,7 +11,11 @@ xxtplay 的 `dist/xxtplay.user.js` 包含以下第三方代码或许可证要求
 - 来源映射与修改说明：`licenses/ocs-provenance.json`
 - 许可证全文：`licenses/OCS-MIT.txt`
 
-本项目的答题流程（发现题目、请求 AI、校验答案、回填与提交）为独立实现，不复制 OCS 的 Worker/调度代码。
+答题任务的编排方式参考并改编 OCSWorker，见 `src/core/question-worker.ts` 中的版权与来源标注；平台适配和 AI 传输为项目实现。
+
+## 角色视觉
+
+`src/ui/assets/` 中的小鲸鱼、水豚和月亮宇航员为本项目设计生成的插画。DeepSeek、Qwen、Kimi 名称和相关品牌资产属于各自权利人；主题仅用于识别用户选择的服务商，不表示官方合作或背书。水豚形象参考了 [Qwen 社区页面](https://qwen.ai/ambassador)，Kimi 月亮宇航员为本项目的原创设计，不是官方角色。
 
 ## string-similarity
 

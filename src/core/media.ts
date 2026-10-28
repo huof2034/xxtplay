@@ -23,16 +23,9 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
     catch { speedEnabled = false; }
   };
   if (playback.autoSpeed && !speedEnabled) repo.log('info', '平台未声明允许倍速，按原速播放');
-  let seekAttempted = false;
-  const seekNearEnd = () => {
-    if (seekAttempted || !playback.autoSeek) return;
-    if (!adapter.seekAllowed(job) || !Number.isFinite(media.duration) || media.duration <= 5) return;
-    const target = media.duration - 1;
-    if (target <= media.currentTime + 2) return;
-    seekAttempted = true;
-    try { media.currentTime = target; repo.log('info', `页面允许拖动，已跳到接近结尾（${Math.floor(target)} 秒）`); }
-    catch { repo.log('warn', '播放器拒绝拖动，继续正常播放'); }
-  };
+  // Seeking skips actual viewing and cannot establish a minimum watched duration.
+  // Keep the legacy setting readable but never use it to bypass a viewing requirement.
+  if (playback.autoSeek) repo.log('info', '为保证实际观看时长，本版本不会自动拖动视频');
   media.muted = config.muted;
   let watched = repo.state().tasks[taskId]?.progress?.watched || 0;
   let previous = media.currentTime; let previousWall = performance.now();
@@ -67,7 +60,6 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
     checkpoint();
     enforceRate();
     await beginPlayback();
-    seekNearEnd();
     const started = Date.now();
     while (true) {
       throwIfAborted(signal);
@@ -75,13 +67,13 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       const blocked = adapter.blocked(); if (blocked) throw new HumanRequired(blocked);
       if (!media.isConnected) throw new Error('媒体页面已切换，已保存断点');
       if (media.error) throw new Error(`媒体加载失败（${media.error.code}），保留待办`);
-      seekNearEnd();
       const target = watchTargetMet(requirement, { duration: media.duration, watched, ended: ended || media.ended }, course.efficiencyMode);
-      if ((target || (course.efficiencyMode && requirement.known)) && Date.now() - lastVerify >= (target ? 5000 : 20_000)) {
+      if (target && Date.now() - lastVerify >= 5000) {
         lastVerify = Date.now(); verified = await adapter.verifyPassed(job);
       }
-      if (verified && (target || (course.efficiencyMode && requirement.known))) { media.pause(); checkpoint(); return '平台任务点已确认通过'; }
+      if (verified && target) { media.pause(); checkpoint(); return '平台任务点已确认通过'; }
       if (ended || media.ended) {
+        if (!target) throw new Error('视频已到结尾，但已记录的观看时长不足；保留待办，请检查播放进度');
         for (let i = 0; i < 3; i++) { if (await adapter.verifyPassed(job)) return '完整播放后平台任务点已确认通过'; await sleep(5000, signal); }
         throw new Error('视频已完整播放，平台尚未确认通过；保留待办，不标记完成');
       }

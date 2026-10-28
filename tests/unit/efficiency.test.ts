@@ -14,6 +14,11 @@ describe('效率模式：明确要求和平台完成必须分开核验', () => {
   it('未知要求不预设80%或90%', () => { const r = requirement('请完成视频学习'); expect(r.known).toBe(false); expect(watchTargetMet(r, { duration: 100, watched: 99, ended: false }, true)).toBe(false); });
   it('普通模式在视频结束前不结束', () => { expect(watchTargetMet(requirement('本视频观看至少 80% 即可通过'), { duration: 100, watched: 90, ended: false }, false)).toBe(false); });
   it('效率模式达到90%后才进入通过状态核验', () => { const r = requirement('本视频观看至少90%即可完成任务点'); expect(watchTargetMet(r, { duration: 100, watched: 89, ended: false }, true)).toBe(false); expect(watchTargetMet(r, { duration: 100, watched: 90, ended: false }, true)).toBe(true); });
-  it('完整播放可进入最终平台确认，即使历史播放数据缺失', () => { expect(watchTargetMet(requirement('本视频观看至少90%即可完成任务点'), { duration: 100, watched: 20, ended: true }, true)).toBe(true); });
+  it('到结尾不代表已满足最低观看量', () => { expect(watchTargetMet(requirement('本视频观看至少90%即可完成任务点'), { duration: 100, watched: 20, ended: true }, true)).toBe(false); });
+  it('完整播放要求已记录观看时长，不能只凭到结尾', () => {
+    const r = requirement('请完成视频学习');
+    expect(watchTargetMet(r, { duration: 100, watched: 20, ended: true }, true)).toBe(false);
+    expect(watchTargetMet(r, { duration: 100, watched: 99.8, ended: true }, true)).toBe(true);
+  });
   it('未知时长不会产生有效目标', () => { expect(requiredSeconds(requirement('本视频观看至少90%即可完成任务点'), NaN)).toBeUndefined(); });
 });

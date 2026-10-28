@@ -34,6 +34,7 @@ await mkdir(new URL('../dist/', import.meta.url), { recursive: true });
 await build({
   entryPoints: ['src/main.ts'], outfile: 'dist/xxtplay.user.js', bundle: true, format: 'iife',
   platform: 'browser', target: ['chrome120', 'edge120'], charset: 'utf8', legalComments: 'inline',
+  loader: { '.webp': 'dataurl' },
   banner: { js: header }, define: { __VERSION__: JSON.stringify(pkg.version) }, sourcemap: false,
 });
 await writeFile(new URL('../dist/xxtplay.meta.js', import.meta.url), header + '\n', 'utf8');

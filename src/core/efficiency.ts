@@ -27,8 +27,9 @@ export function requiredSeconds(requirement: WatchRequirement, duration: number)
   return Math.max(...requirement.conditions.map(c => c.kind === 'ratio' ? c.value * duration : c.value));
 }
 export function watchTargetMet(requirement: WatchRequirement, progress: { duration: number; watched: number; ended: boolean }, efficient: boolean): boolean {
-  if (progress.ended) return true;
-  if (!efficient || !requirement.known) return false;
+  if (!efficient || !requirement.known) {
+    return progress.ended && Number.isFinite(progress.duration) && progress.duration > 0 && progress.watched >= Math.max(0, progress.duration - 0.5);
+  }
   const target = requiredSeconds(requirement, progress.duration);
   return target !== undefined && progress.watched >= target;
 }

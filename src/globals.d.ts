@@ -1,4 +1,5 @@
 declare const __VERSION__: string;
+declare module '*.webp' { const dataUrl: string; export default dataUrl; }
 declare function GM_getValue<T>(key: string, fallback: T): T;
 declare function GM_setValue(key: string, value: unknown): void;
 declare function GM_deleteValue(key: string): void;

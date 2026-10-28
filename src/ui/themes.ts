@@ -38,9 +38,10 @@ export const THEME_CSS = `
 .tabs{padding:0 10px;overflow-x:auto;scrollbar-width:thin;border-color:var(--line);gap:2px;background:#ffffffdc}
 .tabs button{flex:0 0 auto;padding:11px 10px;color:var(--secondary);font-size:12px}
 .tabs button.active{color:var(--accent-dark);border-color:var(--accent);font-weight:700}
-.body{padding:14px;max-height:min(65vh,calc(100vh - 180px));overflow:auto}
-.body:not([data-tab="courses"]){background:#ffffffed}
-.card{background:#fffffff0;border-color:var(--line);border-radius:12px;padding:13px;box-shadow:0 2px 8px #1d335108}
+.body{position:relative;z-index:1;padding:14px 14px 22px;max-height:min(65vh,calc(100vh - 180px));overflow:auto;background:linear-gradient(180deg,#ffffffef 0%,#ffffffc9 48%,#ffffff9e 100%)}
+/* Keep the character scene visible in every tab, not only the course tab. */
+.body[data-tab="courses"]{background:linear-gradient(90deg,#ffffffe8 0%,#ffffffc2 58%,#ffffff7a 100%)}
+.card{background:#fffffff2;border-color:var(--line);border-radius:12px;padding:13px;box-shadow:0 2px 8px #1d335108;backdrop-filter:blur(1px)}
 .body[data-tab="courses"] .card{width:75%;min-width:min(245px,100%)}
 .body[data-tab="courses"] .options{flex-wrap:wrap;gap:6px 12px}
 .hint{background:#fffffff0;color:var(--accent-dark);border:1px solid var(--line);line-height:1.6}
@@ -51,5 +52,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{ou
 input[type=checkbox]{accent-color:var(--accent)}input[type=text],input[type=password],input[type=url],select{background:#fff;border-color:var(--line);color:var(--ink)}input:focus,select:focus{border-color:var(--accent)}
 .link{color:var(--accent-dark)}.meter{background:var(--accent-soft)}.meter>div{background:var(--accent)}.footer{color:var(--secondary);border-color:var(--line);background:#ffffffeb}
 .bubble{background:var(--accent);color:white;box-shadow:0 6px 24px #263b6140}.bubble:hover{background:var(--accent-dark);color:white}
-@media(max-width:420px){:host{right:8px;bottom:8px}.panel{max-width:calc(100vw - 16px)}.head{padding:12px}.body{padding:10px;max-height:calc(100vh - 155px)}.theme-badge{max-width:76px}.toolbar{flex-wrap:wrap}.toolbar button{min-width:calc(50% - 8px)}}
+@media(max-width:420px){:host{right:8px;bottom:8px}.panel{max-width:calc(100vw - 16px)}.head{padding:12px}.body{padding:10px 10px 20px;max-height:calc(100vh - 155px)}.theme-badge{max-width:76px}.toolbar{flex-wrap:wrap}.toolbar button{min-width:calc(50% - 8px)}}
+@media(prefers-reduced-motion:reduce){.scene-in{animation:none}button,input,select,.meter>div{transition:none!important}}
 `;

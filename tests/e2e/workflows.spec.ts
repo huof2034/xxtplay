@@ -302,6 +302,23 @@ test('AI 主题随保存的服务商切换并在刷新后恢复', async ({ conte
   await expect(panel.locator('.theme-badge')).toHaveText('自定义 AI');
   expect(await panel.locator('.scene').evaluate(el => getComputedStyle(el).backgroundImage)).toBe('none');
 });
+test('所有标签页都保留服务商背景和主题配色', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'quiz', autoRun: false });
+  await h.page.getByRole('button', { name: 'AI 设置', exact: true }).click();
+  await h.page.getByLabel('服务商', { exact: true }).selectOption('kimi');
+  await h.page.getByLabel('API Key', { exact: true }).fill('kimi-theme-key');
+  await h.page.getByRole('button', { name: '保存设置' }).click();
+  const panel = h.page.locator('#xxtplay-root');
+  for (const [tab, id] of [['课程', 'courses'], ['播放', 'play'], ['运行', 'run'], ['AI 设置', 'ai'], ['复习', 'notes']] as const) {
+    await h.page.getByRole('button', { name: tab, exact: true }).click();
+    await expect(panel.locator('.body')).toHaveAttribute('data-tab', id);
+    await expect(panel.locator('.scene')).toHaveCSS('background-image', /data:image\/webp;base64,/);
+    const background = await panel.locator('.body').evaluate(el => getComputedStyle(el).backgroundImage);
+    expect(background).toContain('linear-gradient');
+    await expect(panel).toHaveAttribute('data-theme', 'kimi');
+  }
+  expect(h.apiCalls).toHaveLength(0);
+});
 test('切换模型播放入场动画，减少动态效果设置关闭动画', async ({ context }) => {
   const h = await createHarness(context, { mode: 'quiz', autoRun: false });
   await h.page.getByRole('button', { name: 'AI 设置', exact: true }).click();

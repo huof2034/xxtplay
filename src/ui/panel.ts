@@ -20,7 +20,7 @@ const KIND: Record<string, string> = { video: '视频', audio: '音频', documen
 export class Panel {
   private host = element('div'); private root: ShadowRoot; private container = element('div', '', 'panel'); private body = element('div', '', 'body'); private tab = 'courses'; private collapsed = false; private scheduled = false;
   private fields?: { base: HTMLInputElement; key: HTMLInputElement; text: HTMLSelectElement; vision: HTMLSelectElement; muted: HTMLInputElement };
-  private notice = ''; private settingsHold = false;
+  private notice = ''; private settingsHold = false; private animatedProvider?: AiProviderId;
   constructor(private repo: Repository, private actions: PanelActions) {
     this.host.id = 'xxtplay-root'; this.root = this.host.attachShadow({ mode: 'closed' });
     const style = element('style'); style.textContent = CSS + THEME_CSS; this.root.append(style); document.documentElement.append(this.host);
@@ -34,8 +34,10 @@ export class Panel {
     for (const child of [...this.root.children]) if (child.tagName !== 'STYLE') child.remove();
     if (this.collapsed) { this.root.append(button('📚 xxtplay', () => this.show(), 'bubble')); return; }
     this.container = element('div', '', 'panel');
+    const provider = this.repo.config().ai.provider;
     const scene = element('div', '', 'scene'); scene.setAttribute('aria-hidden', 'true');
-    const art = THEME_ART[this.repo.config().ai.provider]; if (art) scene.style.backgroundImage = `url("${art}")`;
+    const art = THEME_ART[provider]; if (art) scene.style.backgroundImage = `url("${art}")`;
+    if (art && this.animatedProvider !== provider) { scene.classList.add('scene-in'); this.animatedProvider = provider; }
     this.container.append(scene);
     const head = element('div', '', 'head'); const identity = element('div', '', 'identity');
     const mark = element('span', '', 'theme-mark'); mark.setAttribute('aria-hidden', 'true');
@@ -217,7 +219,7 @@ export class Panel {
         config.ai = { provider, baseUrl: base.value.trim(), apiKey: key.value.trim() || config.ai.apiKey, textModel, visionModel }; config.muted = muted.checked; this.repo.saveConfig(config);
         this.host.dataset.theme = provider; const badge = this.container.querySelector('.theme-badge'); if (badge) badge.textContent = themeName(provider);
         const scene = this.container.querySelector<HTMLElement>('.scene');
-        if (scene && changed) { scene.style.backgroundImage = THEME_ART[provider] ? `url("${THEME_ART[provider]}")` : ''; scene.classList.remove('scene-in'); void scene.offsetWidth; scene.classList.add('scene-in'); }
+        if (scene && changed) { scene.style.backgroundImage = THEME_ART[provider] ? `url("${THEME_ART[provider]}")` : ''; scene.classList.remove('scene-in'); void scene.offsetWidth; if (THEME_ART[provider]) scene.classList.add('scene-in'); this.animatedProvider = provider; }
         key.value = ''; key.placeholder = config.ai.apiKey ? '已配置；留空保留现有密钥' : '未配置密钥'; this.notice = '设置已保存。保存设置不会调用 AI。'; const hint = element('div', this.notice, 'hint'); this.body.append(hint);
       } catch (e) { this.body.append(element('div', errorMessage(e), 'error')); }
     }, 'primary'); save.style.marginTop = '12px'; this.body.append(save);

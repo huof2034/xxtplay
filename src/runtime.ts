@@ -20,7 +20,7 @@ export class Runtime {
   readonly ai: AiClient; readonly worker: QuestionWorker; readonly summary: SummaryService; readonly lease: AccountLease;
   private panel?: Panel; private busy = false; private control?: AbortController; private interval?: ReturnType<typeof setInterval>; private observer?: MutationObserver; private scanTimer?: ReturnType<typeof setTimeout>;
   private lastNavigation = Date.now(); private examPanel?: ReturnType<typeof examReview>; private examTask?: PlatformJob; private gate?: ExamSubmissionGate; private removeListener?: () => void;
-  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0; private chapterTabAttempts = 0;
+  private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0; private chapterTabAttempts = 0; private lastQueueLog = 0;
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -28,6 +28,7 @@ export class Runtime {
     this.repo.onChange = () => { this.panel?.schedule(); this.schedule(); };
     this.removeListener = repo.storage.listen?.(repo.key, () => { this.panel?.schedule(); if (this.control && !this.authorized(this.examTask?.kind === 'exam')) this.control.abort(); this.schedule(); });
     bus.onExamContext = () => { this.adapter.inheritedExam = bus.inheritedExam(); this.control?.abort(); this.schedule(); };
+    bus.onOpenTask = () => { this.adapter.openNextTask(); };
     bus.onNavigate = id => { const course = this.course(); if (this.repo.state().autoRun && course?.enabled && !this.repo.state().examActive && this.adapter.navigateChapter(id)) this.lastNavigation = Date.now(); };
     if (topLevel) {
       this.panel = new Panel(repo, { start: () => this.start(), stop: () => this.stop(), retry: () => this.retry(), scan: () => this.scanCourses(), refresh: () => this.refreshCatalog(true), summarize: key => this.generateSummary(key), exportNote: key => downloadText(`${repo.state().courses.find(c => c.key === key)?.title || '课程'}-复习资料.md`, this.summary.markdown(key), 'text/markdown;charset=utf-8') });
@@ -249,7 +250,13 @@ export class Runtime {
     if (Date.now() - this.lastNavigation < 10_000 || this.bus.activeReports().some(r => r.busy || r.snapshot.exam)) return;
     const state = this.repo.state(); const reports = this.bus.activeReports().filter(r => r.courseKey === course.key);
     const jobs = reports.flatMap(r => r.snapshot.jobs);
-    if (jobs.some(j => !state.tasks[this.taskId(j, course)] || ['queued', 'running'].includes(state.tasks[this.taskId(j, course)].status))) return;
+    // A completed task must not hide the next, not-yet-loaded task point in the same chapter.
+    const pending = jobs.filter(job => {
+      const record = state.tasks[this.taskId(job, course)];
+      return !record || ['queued', 'running'].includes(record.status) ||
+        record.status === 'submitted-unverified' && Date.now() - (this.lastVerification.get(record.id) || 0) > 60_000;
+    });
+    if (pending.length) return;
     const catalogue = reports.filter(r => r.snapshot.chapters.length).sort((a, b) => b.snapshot.chapters.length - a.snapshot.chapters.length)[0];
     if (!catalogue) {
       if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) { this.lastTaskOpen = Date.now(); this.repo.log('info', '已尝试打开当前页面的任务点，等待播放器加载'); }
@@ -260,22 +267,37 @@ export class Runtime {
     }
     this.chapterTabAttempts = 0;
     const activeChapter = catalogue.snapshot.chapters.find(c => c.current);
-    if (activeChapter && !activeChapter.completed && jobs.length === 0) {
+    const unfinished = this.adapter.hasUnfinishedTaskPoints();
+    if (activeChapter && !activeChapter.completed) {
       if (Date.now() - this.lastTaskOpen < 8_000) {
         const waiting = '正在打开任务点，等待播放器加载';
         if (state.pausedReason !== waiting) this.repo.update(s => { s.pausedReason = waiting; });
         return;
       }
-      if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) {
-        this.lastTaskOpen = Date.now();
-        const opening = `正在打开任务点：${activeChapter.title}`;
-        this.repo.update(s => { s.pausedReason = opening; });
-        this.repo.log('info', `未发现已加载的视频，自动打开任务点：${activeChapter.title}`);
+      if (this.repo.config().playback.autoOpen) {
+        const opened = unfinished ? this.adapter.openNextTask() : false;
+        // When the top page cannot read a cross-origin cards iframe, ask child frames
+        // to click their own next task point instead of silently ending the queue.
+        const requested = opened ? 0 : this.bus.requestOpenTask();
+        if (opened || requested) {
+          this.lastTaskOpen = Date.now();
+          const opening = `正在打开任务点：${activeChapter.title}`;
+          this.repo.update(s => { s.pausedReason = opening; });
+          if (Date.now() - this.lastQueueLog > 15_000) {
+            this.lastQueueLog = Date.now();
+            this.repo.log('info', `自动打开任务点：${activeChapter.title}（当前章节仍有未加载任务）`);
+          }
+          return;
+        }
+      }
+      if (unfinished) {
+        const reason = this.repo.config().playback.autoOpen
+          ? '当前章节仍有未完成任务点，已尝试自动打开；若页面需要点击，请手动点开一次'
+          : '当前章节仍有未完成任务点，请手动点开或开启自动打开任务点';
+        if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
         return;
       }
-      const reason = '当前章节尚未识别到任务，已尝试自动打开；若仍无视频，请手动点开一次';
-      if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
-      return;
+      // No unfinished task points remain in this chapter: fall through to chapter/course switching.
     }
     this.busy = true;
     if (!await this.lease.acquire()) { this.busy = false; return; }

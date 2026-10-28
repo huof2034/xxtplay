@@ -275,6 +275,14 @@ export class ChaoxingAdapter {
     }
     return undefined;
   }
+  hasUnfinishedTaskPoints(): boolean {
+    const docs: Document[] = [this.doc];
+    const cards = this.cardsDocument(); if (cards && cards !== this.doc) docs.push(cards);
+    return docs.some(doc => [...doc.querySelectorAll<HTMLElement>('.ans-attach-ct')].some(point =>
+      !point.classList.contains('ans-job-finished') &&
+      !point.querySelector('.icon_Completed,.icon_completed,.icon_yiwanc,.catalog-complete') &&
+      visible(point)));
+  }
   /** Open/scroll the first unfinished task point so its player iframe starts loading. Returns false when nothing safe was found. */
   openNextTask(): boolean {
     const docs: Document[] = [this.doc];

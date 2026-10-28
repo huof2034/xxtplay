@@ -121,6 +121,17 @@ test('未打开的任务点会自动打开并继续播放', async ({ context }) 
   expect(h.state().logs.some(log => /自动打开任务点/.test(log.message))).toBe(true);
   expect(h.apiCalls).toHaveLength(0);
 });
+test('一个视频播放完成后自动打开并播放下一个视频', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue', sequence: true });
+  await expect.poll(() => Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed').length, { timeout: 75_000 }).toBe(2);
+  expect(h.state().logs.some(log => /自动打开任务点/.test(log.message))).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('跨域卡片页完成一个视频后也会自动打开下一个', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue', sequence: true, crossOrigin: true });
+  await expect.poll(() => Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed').length, { timeout: 80_000 }).toBe(2);
+  expect(h.apiCalls).toHaveLength(0);
+});
 test('平台允许时自动倍速并记录日志', async ({ context }) => {
   const h = await createHarness(context, { mode: 'video', speedAllowed: true, playback: { autoSpeed: true, speed: 2, autoSeek: false } });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);

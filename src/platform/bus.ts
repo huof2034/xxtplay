@@ -14,6 +14,7 @@ export class FrameBus {
   onNavigate?: (chapterId: string) => void;
   onReport?: () => void;
   onExamContext?: () => void;
+  onOpenTask?: () => void;
   private parentExam: boolean | undefined;
   private pendingChildren = new Map<string, { source: Window; origin: string }>();
   private ancestryTimer?: ReturnType<typeof setInterval>;
@@ -67,6 +68,7 @@ export class FrameBus {
       if (message.type === 'context' && typeof message.tabId === 'string' && /^\d+$/.test(message.accountId)) {
         this.context = { tabId: message.tabId, accountId: message.accountId, course: message.course }; this.onContext?.(this.context);
       } else if (message.type === 'navigate' && message.tabId === this.context?.tabId && typeof message.chapterId === 'string') this.onNavigate?.(message.chapterId);
+      else if (message.type === 'open-task' && message.tabId === this.context?.tabId) this.onOpenTask?.();
     }
   }
   report(report: Omit<FrameReport, 'id' | 'at'>): void {
@@ -78,6 +80,14 @@ export class FrameBus {
     if (frameId === this.id) { this.onNavigate?.(chapterId); return; }
     const target = this.reports.get(frameId);
     if (target) target.source.postMessage({ channel: CHANNEL, type: 'navigate', tabId: target.tabId, chapterId }, target.origin);
+  }
+  /** Ask child frames to open their own next task point when the top page cannot read a cross-origin cards iframe. */
+  requestOpenTask(): number {
+    let sent = 0;
+    for (const report of this.reports.values()) {
+      try { report.source.postMessage({ channel: CHANNEL, type: 'open-task', tabId: report.tabId }, report.origin); sent++; } catch { /* Frame disappeared. */ }
+    }
+    return sent;
   }
   activeReports(): FrameReport[] {
     for (const [id, report] of this.reports) {

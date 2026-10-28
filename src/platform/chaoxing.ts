@@ -10,7 +10,8 @@ type SiteWindow = Window & Record<string, any>;
 interface Attachment { isPassed?: boolean; job?: boolean; jobid?: string; property?: Record<string, any>; [key: string]: any }
 export interface Chapter { id: string; title: string; completed: boolean; locked: boolean; current: boolean }
 export interface PlatformJob { id: string; title: string; kind: TaskKind; passed: boolean; required: boolean; element?: HTMLElement; jobId?: string; metadata?: Attachment }
-export interface PlatformSnapshot { jobs: Omit<PlatformJob, 'element' | 'metadata'>[]; chapters: Chapter[]; exam: boolean; blocked?: string }
+export interface FrameTaskContext { jobId?: string; required?: boolean; passed?: boolean; title?: string }
+export interface PlatformSnapshot { jobs: Omit<PlatformJob, 'element' | 'metadata'>[]; chapters: Chapter[]; exam: boolean; blocked?: string; unfinishedTaskPoints: number; cardsReady: boolean; emptyChapter: boolean }
 
 export function visible(el: Element | null): el is HTMLElement {
   if (!el) return false;
@@ -75,6 +76,7 @@ function attachmentId(a: Attachment): string { return String(a.jobid || a.proper
 export class ChaoxingAdapter {
   readonly win: SiteWindow;
   inheritedExam = false;
+  inheritedTask?: FrameTaskContext;
   private chapterElements = new Map<string, HTMLElement>();
   private lastTaskOpenKey = ''; private lastTaskOpenAt = 0;
   constructor(readonly doc: Document = document, win = publicWindow()) { this.win = win; }
@@ -158,7 +160,20 @@ export class ChaoxingAdapter {
       } catch { /* Cross-origin metadata is deliberately not guessed. */ }
     }
     const p = new URL(this.doc.URL).searchParams;
-    return p.get('jobid') || p.get('jobId') || '';
+    return p.get('jobid') || p.get('jobId') || this.inheritedTask?.jobId || '';
+  }
+  childTaskContext(source: Window): FrameTaskContext | undefined {
+    const frame = [...this.doc.querySelectorAll<HTMLIFrameElement>('iframe')].find(item => item.contentWindow === source);
+    if (!frame) return undefined;
+    let id = frame.getAttribute('jobid') || '';
+    try { const data = JSON.parse(frame.getAttribute('data') || '{}'); id ||= String(data.jobid || data._jobid || ''); } catch { /* Ignore malformed platform metadata. */ }
+    const attachment = id ? this.attachmentContext().attachments.find(item => attachmentId(item) === id) : undefined;
+    const point = frame.closest('.ans-attach-ct');
+    if (!attachment && !point) return undefined;
+    const icon = point?.querySelector<HTMLElement>('.ans-job-icon');
+    const label = icon?.getAttribute('aria-label') || icon?.title || '';
+    const passed = attachment?.isPassed === true || !!point?.classList.contains('ans-job-finished') || (/完成|通过/.test(label) && !/未完成|未通过/.test(label));
+    return { jobId: id || undefined, required: attachment ? attachment.job !== false : !!icon, passed, title: attachment?.property?.name || attachment?.property?.title };
   }
   private metadata(kind: TaskKind): Attachment | undefined {
     const { attachments } = this.attachmentContext(); const id = this.frameJobId();
@@ -171,17 +186,18 @@ export class ChaoxingAdapter {
     const result: PlatformJob[] = [];
     const add = (kind: TaskKind, element?: HTMLElement, suffix = '') => {
       const metadata = this.metadata(kind); const jobId = metadata ? attachmentId(metadata) : this.frameJobId();
+      const inherited = kind === 'video' || kind === 'audio' ? this.inheritedTask : undefined;
       const p = new URL(this.doc.URL).searchParams;
       const identity = jobId || p.get('workId') || p.get('workid') || p.get('examId') || p.get('examid') || p.get('taskrefId') || `${sourceLink(this.doc.URL)}:${kind}:${suffix}`;
-      const title = metadata?.property?.name || metadata?.property?.title || text(this.doc.querySelector('.testTit,.mark_title,.discussion-title,h1')) || this.doc.title || kind;
-      result.push({ id: `${kind}:${identity}`, title, kind, element, jobId, metadata, required: metadata ? metadata.job !== false || metadata.isPassed === true : true, passed: this.passedSync(jobId, kind) });
+      const title = metadata?.property?.name || metadata?.property?.title || inherited?.title || text(this.doc.querySelector('.testTit,.mark_title,.discussion-title,h1')) || this.doc.title || kind;
+      result.push({ id: `${kind}:${identity}`, title, kind, element, jobId, metadata, required: metadata ? metadata.job !== false : inherited?.required ?? true, passed: this.passedSync(jobId, kind) || inherited?.passed === true });
     };
     for (const [index, media] of [...this.doc.querySelectorAll<HTMLMediaElement>('video,audio')].entries()) {
       // A player belongs to its own frame; an outer wrapper with iframes is not a second task.
       if (media.closest('#xxtplay-root')) continue;
       // Player internals may contain inert helper media without any source.
       // Wait until a source is actually attached before treating it as a task.
-      if (!media.currentSrc && !media.getAttribute('src') && !media.querySelector('source[src]')) continue;
+      if (!media.currentSrc && !media.getAttribute('src') && !media.querySelector('source[src]') && !media.srcObject) continue;
       add(media.tagName === 'AUDIO' ? 'audio' : 'video', media, String(index));
     }
     if (this.doc.querySelector('.TiMu,.questionLi,.question-item')) add(this.isExam() ? 'exam' : 'quiz');
@@ -227,6 +243,7 @@ export class ChaoxingAdapter {
   }
   async verifyPassed(job: PlatformJob): Promise<boolean> {
     if (this.passedSync(job.jobId, job.kind)) return true;
+    if ((job.kind === 'video' || job.kind === 'audio') && this.inheritedTask?.passed === true && (!job.jobId || !this.inheritedTask.jobId || job.jobId === this.inheritedTask.jobId)) return true;
     if (!job.jobId) return false;
     const owner = this.attachmentContext().owner;
     if (!owner || !/\/knowledge\/cards/.test(owner.location.pathname)) return false;
@@ -295,28 +312,43 @@ export class ChaoxingAdapter {
     }
     return undefined;
   }
-  hasUnfinishedTaskPoints(): boolean {
+  cardsReady(): boolean { return /\/knowledge\/cards?/.test(new URL(this.doc.URL).pathname) || !!this.cardsDocument(); }
+  emptyChapter(): boolean {
+    if (!/\/knowledge\/cards?/.test(new URL(this.doc.URL).pathname)) return false;
+    const entries = this.win.mArg?.attachments || this.win.attachments;
+    return Array.isArray(entries) && entries.every((entry: Attachment) => entry.job === false);
+  }
+  private unfinishedPoints(doc: Document): HTMLElement[] {
+    const attachments = this.attachmentContext().attachments;
+    return [...doc.querySelectorAll<HTMLElement>('.ans-attach-ct')].filter(point => {
+      const icon = point.querySelector<HTMLElement>('.ans-job-icon');
+      if (!icon || !visible(point) || point.classList.contains('ans-job-finished') || point.querySelector('.icon_Completed,.icon_completed,.icon_yiwanc,.catalog-complete')) return false;
+      const label = icon.getAttribute('aria-label') || icon.title || '';
+      if (/完成|通过/.test(label) && !/未完成|未通过/.test(label)) return false;
+      const frame = point.querySelector<HTMLIFrameElement>('iframe');
+      let frameId = frame?.getAttribute('jobid') || '';
+      try { const data = JSON.parse(frame?.getAttribute('data') || '{}'); frameId ||= String(data.jobid || data._jobid || ''); } catch { /* Ignore malformed platform metadata. */ }
+      const attachment = frameId ? attachments.find(item => attachmentId(item) === frameId) : undefined;
+      return !attachment || (attachment.job !== false && attachment.isPassed !== true);
+    });
+  }
+  unfinishedTaskPoints(): number {
     const docs: Document[] = [this.doc];
     const cards = this.cardsDocument(); if (cards && cards !== this.doc) docs.push(cards);
-    return docs.some(doc => [...doc.querySelectorAll<HTMLElement>('.ans-attach-ct')].some(point =>
-      !point.classList.contains('ans-job-finished') &&
-      !point.querySelector('.icon_Completed,.icon_completed,.icon_yiwanc,.catalog-complete') &&
-      visible(point)));
+    return docs.reduce((count, doc) => count + this.unfinishedPoints(doc).length, 0);
   }
+  hasUnfinishedTaskPoints(): boolean { return this.unfinishedTaskPoints() > 0; }
   /** Open/scroll the first unfinished task point so its player iframe starts loading. Returns false when nothing safe was found. */
   openNextTask(): boolean {
     const docs: Document[] = [this.doc];
     const cards = this.cardsDocument(); if (cards && cards !== this.doc) docs.push(cards);
     for (const doc of docs) {
-      const points = [...doc.querySelectorAll<HTMLElement>('.ans-attach-ct')].filter(point =>
-        !point.classList.contains('ans-job-finished') &&
-        !point.querySelector('.icon_Completed,.icon_completed,.icon_yiwanc,.catalog-complete') &&
-        visible(point));
+      const points = this.unfinishedPoints(doc);
       for (const point of points) {
         const icon = point.querySelector<HTMLElement>('.ans-job-icon');
         const frame = point.querySelector<HTMLIFrameElement>('iframe');
         const key = frame?.getAttribute('jobid') || point.id || text(point).slice(0, 80);
-        if (key === this.lastTaskOpenKey && Date.now() - this.lastTaskOpenAt < 30_000) continue;
+        if (key === this.lastTaskOpenKey && Date.now() - this.lastTaskOpenAt < 8_000) continue;
         this.lastTaskOpenKey = key; this.lastTaskOpenAt = Date.now();
         try { point.scrollIntoView({ block: 'center' }); } catch { /* The cards page may have been replaced. */ }
         try { (icon || point).click(); return true; } catch { return false; }

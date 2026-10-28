@@ -47,6 +47,7 @@ export interface AccountState {
   cache: AnswerCache[]; audit: AiAudit[]; logs: LogEntry[];
   activeCourseKey?: string; pausedReason?: string;
   visitedChapters?: Record<string, string[]>;
+  confirmedEmptyChapters?: Record<string, string[]>;
   examActive?: { tabId: string; at: number };
 }
 

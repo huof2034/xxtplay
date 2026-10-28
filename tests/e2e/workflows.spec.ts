@@ -132,6 +132,44 @@ test('跨域卡片页完成一个视频后也会自动打开下一个', async ({
   await expect.poll(() => Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed').length, { timeout: 80_000 }).toBe(2);
   expect(h.apiCalls).toHaveLength(0);
 });
+test('跨域章节连续播放两个视频并进入下一章节，始终不调用AI', async ({ context }) => {
+  test.setTimeout(150_000);
+  const h = await createHarness(context, { mode: 'catalogue', twoChapters: true, crossOrigin: true });
+  await expect.poll(() => Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed').length, { timeout: 135_000 }).toBe(4);
+  await expect(h.page.locator('#cur11')).toHaveClass(/posCatalog_active/);
+  expect(h.state().logs.some(log => /已切换章节：第二章/.test(log.message))).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('跨域非任务视频不会被当作必做任务播放', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue', crossOrigin: true, nonTaskVideo: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout: 35_000 }).toBe(true);
+  expect(Object.values(h.state().tasks).some(t => t.id.includes('not-required'))).toBe(false);
+  const frame = h.page.frames().find(f => f.url().includes('jobid=not-required'));
+  expect(frame).toBeTruthy();
+  expect(await frame!.locator('video').evaluate((video: HTMLVideoElement) => video.paused)).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('任务点点击没有加载播放器时不会错误进入下一章节', async ({ context }) => {
+  test.setTimeout(65_000);
+  const h = await createHarness(context, { mode: 'catalogue', twoChapters: true, crossOrigin: true, failTaskOpen: true });
+  await expect.poll(() => h.state().logs.some(log => /自动打开任务点/.test(log.message)), { timeout: 40_000 }).toBe(true);
+  await expect.poll(() => h.state().pausedReason, { timeout: 45_000 }).toMatch(/多次打开后仍未加载/);
+  await expect(h.page.locator('#cur10')).toHaveClass(/posCatalog_active/);
+  expect(Object.values(h.state().tasks).filter(t => t.kind === 'video' && t.status === 'completed')).toHaveLength(1);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('播放器延迟设置媒体源后自动静音播放', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'video', crossOrigin: true, delayedSource: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout: 35_000 }).toBe(true);
+  const frame = h.page.frames().find(f => f.url().includes('/ananas/modules/video'));
+  expect(await frame!.locator('video').evaluate((video: HTMLVideoElement) => video.muted)).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('跨域播放器从父任务页接收身份与平台完成状态', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'catalogue', crossOrigin: true, crossOriginPlayer: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.kind === 'video' && t.status === 'completed'), { timeout: 35_000 }).toBe(true);
+  expect(h.apiCalls).toHaveLength(0);
+});
 test('平台允许时自动倍速并记录日志', async ({ context }) => {
   const h = await createHarness(context, { mode: 'video', speedAllowed: true, playback: { autoSpeed: true, speed: 2, autoSeek: false } });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);

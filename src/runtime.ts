@@ -21,6 +21,8 @@ export class Runtime {
   private panel?: Panel; private busy = false; private control?: AbortController; private interval?: ReturnType<typeof setInterval>; private observer?: MutationObserver; private scanTimer?: ReturnType<typeof setTimeout>;
   private lastNavigation = Date.now(); private examPanel?: ReturnType<typeof examReview>; private examTask?: PlatformJob; private gate?: ExamSubmissionGate; private removeListener?: () => void;
   private lastVerification = new Map<string, number>(); private lastTaskOpen = 0; private lastCourseStart = 0; private chapterTabAttempts = 0; private lastQueueLog = 0;
+  private openAttempts = 0; private openAttemptChapter = '';
+  private navigationAttempts = 0; private navigationTarget = '';
   constructor(readonly repo: Repository, readonly bus: FrameBus, readonly tabId: string, readonly topLevel: boolean, private fallback?: Course) {
     this.lease = new AccountLease(repo.storage, repo.accountId);
     this.ai = new AiClient(new GmTransport(), () => repo.config().ai, record => repo.update(s => { s.audit.push(record); s.audit = s.audit.slice(-2000); }));
@@ -28,8 +30,11 @@ export class Runtime {
     this.repo.onChange = () => { this.panel?.schedule(); this.schedule(); };
     this.removeListener = repo.storage.listen?.(repo.key, () => { this.panel?.schedule(); if (this.control && !this.authorized(this.examTask?.kind === 'exam')) this.control.abort(); this.schedule(); });
     bus.onExamContext = () => { this.adapter.inheritedExam = bus.inheritedExam(); this.control?.abort(); this.schedule(); };
-    bus.onOpenTask = () => { this.adapter.openNextTask(); };
-    bus.onNavigate = id => { const course = this.course(); if (this.repo.state().autoRun && course?.enabled && !this.repo.state().examActive && this.adapter.navigateChapter(id)) this.lastNavigation = Date.now(); };
+    bus.onTaskContextRequest = source => this.adapter.childTaskContext(source);
+    bus.onTaskContext = context => { this.adapter.inheritedTask = context; this.schedule(); };
+    this.adapter.inheritedTask = bus.inheritedTask();
+    bus.onOpenTask = () => { const course = this.course(); return !!(this.repo.state().autoRun && course?.enabled && !this.repo.state().examActive && !this.adapter.isExam() && !this.adapter.blocked() && this.adapter.openNextTask()); };
+    bus.onNavigate = id => { const course = this.course(); if (this.repo.state().autoRun && course?.enabled && !this.repo.state().examActive && this.adapter.navigateChapter(id)) { this.lastNavigation = Date.now(); return true; } return false; };
     if (topLevel) {
       this.panel = new Panel(repo, { start: () => this.start(), stop: () => this.stop(), retry: () => this.retry(), scan: () => this.scanCourses(), refresh: () => this.refreshCatalog(true), summarize: key => this.generateSummary(key), exportNote: key => downloadText(`${repo.state().courses.find(c => c.key === key)?.title || '课程'}-复习资料.md`, this.summary.markdown(key), 'text/markdown;charset=utf-8') });
       GM_registerMenuCommand('打开 xxtplay 学习助手', () => this.panel?.show());
@@ -99,7 +104,8 @@ export class Runtime {
   }
   stop(): void { this.repo.update(s => { s.autoRun = false; s.pausedReason = '已手动暂停，断点已保存'; }); this.control?.abort(); this.lease.release(); }
   retry(): void {
-    this.repo.update(s => { for (const task of Object.values(s.tasks)) if (['pending', 'waiting-human'].includes(task.status)) { task.status = 'queued'; task.reason = undefined; } s.visitedChapters = {}; s.pausedReason = undefined; });
+    this.repo.update(s => { for (const task of Object.values(s.tasks)) if (['pending', 'waiting-human'].includes(task.status)) { task.status = 'queued'; task.reason = undefined; } s.visitedChapters = {}; s.confirmedEmptyChapters = {}; s.pausedReason = undefined; });
+    this.openAttempts = 0; this.navigationAttempts = 0;
     this.repo.log('info', '待办已重新排队；提交结果不明的任务仅核验，不自动重复提交'); this.schedule();
   }
   private schedule(): void { if (!this.scanTimer) this.scanTimer = setTimeout(() => { this.scanTimer = undefined; void this.tick().catch(e => this.repo.log('error', errorMessage(e))); }, 400); }
@@ -117,7 +123,7 @@ export class Runtime {
   }
   private updateTask(id: string, patch: Partial<TaskRecord>): void { this.repo.update(s => { if (s.tasks[id]) Object.assign(s.tasks[id], patch, { updatedAt: Date.now() }); }); }
   private async tick(): Promise<void> {
-    if (!this.bus.examContextKnown()) return;
+    if (!this.bus.examContextKnown() || !this.bus.taskContextKnown()) return;
     this.adapter.inheritedExam = this.bus.inheritedExam();
     const course = this.course();
     if (!course) {
@@ -136,7 +142,7 @@ export class Runtime {
     const exam = this.adapter.isExam() && jobs.some(j => j.kind === 'exam');
     if (exam && (this.repo.state().examActive?.tabId !== this.tabId || Date.now() - (this.repo.state().examActive?.at || 0) > 10_000)) this.repo.update(s => { s.examActive = { tabId: this.tabId, at: Date.now() }; });
     else if (!exam && this.topLevel && this.repo.state().examActive && Date.now() - this.repo.state().examActive!.at > 180_000) this.repo.update(s => { s.examActive = undefined; });
-    this.bus.report({ tabId: this.tabId, courseKey: course.key, busy: this.busy, snapshot: { jobs: jobs.map(({ element: _el, metadata: _meta, ...job }) => job), chapters, exam, blocked: this.adapter.blocked() } });
+    this.bus.report({ tabId: this.tabId, courseKey: course.key, busy: this.busy, snapshot: { jobs: jobs.map(({ element: _el, metadata: _meta, ...job }) => job), chapters, exam, blocked: this.adapter.blocked(), unfinishedTaskPoints: this.adapter.unfinishedTaskPoints(), cardsReady: this.adapter.cardsReady(), emptyChapter: this.adapter.emptyChapter() } });
     if (this.busy || !this.repo.state().autoRun || !course.enabled) return;
     const blocked = this.adapter.blocked(); if (blocked) { if (this.repo.state().pausedReason !== blocked) this.repo.update(s => { s.pausedReason = blocked; }); return; }
     const state = this.repo.state();
@@ -151,6 +157,7 @@ export class Runtime {
       return !record || ['queued', 'running'].includes(record.status) || record.status === 'submitted-unverified' && Date.now() - (this.lastVerification.get(record.id) || 0) > 60_000;
     });
     if (job) {
+      this.openAttempts = 0;
       this.busy = true;
       if (!await this.lease.acquire()) { this.busy = false; return; }
       this.control = new AbortController();
@@ -249,9 +256,12 @@ export class Runtime {
   private async navigate(course: Course): Promise<void> {
     if (Date.now() - this.lastNavigation < 10_000 || this.bus.activeReports().some(r => r.busy || r.snapshot.exam)) return;
     const state = this.repo.state(); const reports = this.bus.activeReports().filter(r => r.courseKey === course.key);
+    const blocked = reports.find(r => r.snapshot.blocked)?.snapshot.blocked;
+    if (blocked) { if (state.pausedReason !== blocked) this.repo.update(s => { s.pausedReason = blocked; }); return; }
     const jobs = reports.flatMap(r => r.snapshot.jobs);
     // A completed task must not hide the next, not-yet-loaded task point in the same chapter.
     const pending = jobs.filter(job => {
+      if (!job.required || job.passed) return false;
       const record = state.tasks[this.taskId(job, course)];
       return !record || ['queued', 'running'].includes(record.status) ||
         record.status === 'submitted-unverified' && Date.now() - (this.lastVerification.get(record.id) || 0) > 60_000;
@@ -260,6 +270,7 @@ export class Runtime {
     const catalogue = reports.filter(r => r.snapshot.chapters.length).sort((a, b) => b.snapshot.chapters.length - a.snapshot.chapters.length)[0];
     if (!catalogue) {
       if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openNextTask()) { this.lastTaskOpen = Date.now(); this.repo.log('info', '已尝试打开当前页面的任务点，等待播放器加载'); }
+      else if (this.repo.config().playback.autoOpen && Date.now() - this.lastTaskOpen > 8_000 && await this.bus.requestOpenTask(course.key)) { this.lastTaskOpen = Date.now(); this.repo.log('info', '已请求任务页面打开任务点，等待播放器加载'); }
       else if (this.repo.config().playback.autoOpen && this.chapterTabAttempts < 3 && Date.now() - this.lastTaskOpen > 8_000 && this.adapter.openChapterTab()) {
         this.chapterTabAttempts++; this.lastTaskOpen = Date.now(); this.repo.log('info', '已打开课程章节，等待章节列表加载');
       }
@@ -267,7 +278,8 @@ export class Runtime {
     }
     this.chapterTabAttempts = 0;
     const activeChapter = catalogue.snapshot.chapters.find(c => c.current);
-    const unfinished = this.adapter.hasUnfinishedTaskPoints();
+    const unfinished = reports.some(r => r.snapshot.unfinishedTaskPoints > 0);
+    if (this.openAttemptChapter !== activeChapter?.id) { this.openAttemptChapter = activeChapter?.id || ''; this.openAttempts = 0; }
     if (activeChapter && !activeChapter.completed) {
       if (Date.now() - this.lastTaskOpen < 8_000) {
         const waiting = '正在打开任务点，等待播放器加载';
@@ -275,12 +287,14 @@ export class Runtime {
         return;
       }
       if (this.repo.config().playback.autoOpen) {
-        const opened = unfinished ? this.adapter.openNextTask() : false;
-        // When the top page cannot read a cross-origin cards iframe, ask child frames
-        // to click their own next task point instead of silently ending the queue.
-        const requested = opened ? 0 : this.bus.requestOpenTask();
-        if (opened || requested) {
-          this.lastTaskOpen = Date.now();
+        if (unfinished && this.openAttempts >= 3) {
+          const reason = '任务点多次打开后仍未加载播放器，请检查页面并重试待办';
+          if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
+          return;
+        }
+        const opened = unfinished && await this.bus.requestOpenTask(course.key);
+        if (unfinished) { this.openAttempts++; this.lastTaskOpen = Date.now(); }
+        if (opened) {
           const opening = `正在打开任务点：${activeChapter.title}`;
           this.repo.update(s => { s.pausedReason = opening; });
           if (Date.now() - this.lastQueueLog > 15_000) {
@@ -297,17 +311,42 @@ export class Runtime {
         if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
         return;
       }
-      // No unfinished task points remain in this chapter: fall through to chapter/course switching.
+      if (!reports.some(r => r.snapshot.cardsReady)) {
+        const reason = '等待章节任务页面加载，暂不跳过当前章节';
+        if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
+        return;
+      }
+      if (!reports.some(r => r.snapshot.emptyChapter)) {
+        const reason = '等待平台确认当前章节完成，暂不跳过';
+        if (state.pausedReason !== reason) this.repo.update(s => { s.pausedReason = reason; });
+        return;
+      }
     }
     this.busy = true;
     if (!await this.lease.acquire()) { this.busy = false; return; }
     try {
       const chapters = catalogue.snapshot.chapters; const current = chapters.find(c => c.current);
-      const visited = state.visitedChapters?.[course.key] || [];
-      if (current && !visited.includes(current.id)) { visited.push(current.id); this.repo.update(s => { s.visitedChapters ??= {}; s.visitedChapters[course.key] = visited; }); }
-      const next = chapters.find(c => !c.completed && !c.locked && !visited.includes(c.id) && !c.current);
+      const empty = [...(state.confirmedEmptyChapters?.[course.key] || [])];
+      if (current && !current.completed && reports.some(r => r.snapshot.emptyChapter) && !empty.includes(current.id)) {
+        empty.push(current.id); this.repo.update(s => { s.confirmedEmptyChapters ??= {}; s.confirmedEmptyChapters[course.key] = empty; });
+      }
+      const next = chapters.find(c => !c.completed && !c.locked && !empty.includes(c.id) && !c.current);
       this.lastNavigation = Date.now();
-      if (next) { this.repo.log('info', `切换章节：${next.title}`); this.bus.navigate(catalogue.id, next.id); return; }
+      if (next) {
+        if (this.navigationTarget !== next.id) { this.navigationTarget = next.id; this.navigationAttempts = 0; }
+        if (this.navigationAttempts >= 3) { this.repo.update(s => { s.pausedReason = `章节多次切换失败：${next.title}，请检查后重试待办`; }); return; }
+        this.navigationAttempts++;
+        if (!await this.bus.navigate(catalogue.id, next.id)) { this.repo.update(s => { s.pausedReason = `无法打开章节：${next.title}`; }); return; }
+        this.repo.log('info', `已请求切换章节：${next.title}，等待页面确认`);
+        for (let i = 0; i < 20; i++) {
+          await sleep(500);
+          if (this.bus.activeReports().some(r => r.courseKey === course.key && r.snapshot.chapters.some(c => c.id === next.id && c.current))) {
+            this.navigationAttempts = 0; this.repo.update(s => { s.pausedReason = undefined; }); this.repo.log('info', `已切换章节：${next.title}`); return;
+          }
+        }
+        this.repo.update(s => { s.pausedReason = `章节切换尚未确认：${next.title}，等待重试`; });
+        return;
+      }
       if (course.summaryEnabled) await this.summary.generate(course.key).catch(e => this.repo.log('warn', `复习整理待办：${errorMessage(e)}`));
       const selected = [...this.repo.state().courses].filter(c => c.enabled).sort((a, b) => a.order - b.order); const index = selected.findIndex(c => c.key === course.key); const following = selected[index + 1];
       if (following) {

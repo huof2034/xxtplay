@@ -4,7 +4,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_CONFIG, emptyAccount, type AccountState, type Course, type PlaybackConfig } from '../../src/types';
 
-export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; earlyReceipt?: boolean; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; sequence?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; legacyHomeEntry?: boolean; homeWithChapter?: boolean; extraEmptyAudio?: boolean; playback?: Partial<PlaybackConfig> }
+export interface HarnessOptions { mode?: 'quiz' | 'exam' | 'video' | 'document' | 'catalogue' | 'discussion' | 'home'; apiStatus?: number; invalidAnswer?: boolean; unknownQuestion?: boolean; efficient?: boolean; requirement?: string; noReceipt?: boolean; receiptDelay?: number; earlyReceipt?: boolean; summary?: boolean; autoRun?: boolean; secondCourse?: boolean; crossOrigin?: boolean; crossOriginPlayer?: boolean; embeddedExam?: boolean; blockAutoplay?: boolean; abortPlayOnce?: boolean; muted?: boolean; lazyTask?: boolean; sequence?: boolean; twoChapters?: boolean; nonTaskVideo?: boolean; failTaskOpen?: boolean; delayedSource?: boolean; speedAllowed?: boolean; seekAllowed?: boolean; legacyHomeEntry?: boolean; homeWithChapter?: boolean; extraEmptyAudio?: boolean; playback?: Partial<PlaybackConfig> }
 export interface Harness {
   page: Page; context: BrowserContext; values: Map<string, any>; apiCalls: { body: any; purpose: string }[]; submissions: { jobId: string; kind: string }[];
   state(): AccountState; close(): Promise<void>;
@@ -105,8 +105,16 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
     if (u.pathname.includes('/knowledge/cards')) {
       const makeAttachment = (job: string, name: string) => ({ job: true, isPassed: passed.has(job), jobid: job, property: { _jobid: job, module: 'insertvideo', name, mid: 'm1', fastforward: options.seekAllowed ? 'true' : 'false', doublespeed: options.speedAllowed ? 1 : 0 } });
       const attachment = makeAttachment(jobId, '测试视频');
-      const player = `/ananas/modules/video/index.html?jobid=${jobId}&courseId=${id}&clazzid=200`;
+      const player = `${options.crossOriginPlayer ? 'https://mooc2-ans.chaoxing.com' : ''}/ananas/modules/video/index.html?jobid=${jobId}&courseId=${id}&clazzid=200`;
       const condition = `<div class="ans-job-icon" aria-label="任务点未完成"><div class="task-condition">${options.requirement ?? '完成条件 观看时长需 ≥ 总时长的 90% (未完成任务点前, 当前视频不可拖拽)'}</div></div>`;
+      if (options.twoChapters) {
+        const chapter = u.searchParams.get('knowledgeid') || '10';
+        const ids = [`job-${chapter}-1`, `job-${chapter}-2`];
+        const attachments = ids.map((job, i) => makeAttachment(job, `章节${chapter}视频${i + 1}`));
+        const context = `var mArg=${JSON.stringify({ attachments, defaults: { userid: '111', courseid: id, clazzId: '200' } })};`;
+        const open = options.failTaskOpen ? '' : `document.querySelector('#point-2 .ans-job-icon').addEventListener('click',()=>{if(document.getElementById('slot-2').children.length)return;var f=document.createElement('iframe');f.setAttribute('data',JSON.stringify({jobid:'${ids[1]}'}));f.src='/ananas/modules/video/index.html?jobid=${ids[1]}&courseId=${id}&clazzid=200';document.getElementById('slot-2').append(f)});`;
+        await route.fulfill({ contentType:'text/html', body:shell(`<div class="ans-attach-ct" id="point-1">${condition}<iframe data='{"jobid":"${ids[0]}"}' src="/ananas/modules/video/index.html?jobid=${ids[0]}&courseId=${id}&clazzid=200"></iframe></div><div class="ans-attach-ct" id="point-2">${condition}<div id="slot-2"></div></div>`, context + open) }); return;
+      }
       if (options.sequence) {
         const first = makeAttachment('job-1', '测试视频一'); const second = makeAttachment('job-2', '测试视频二');
         const context = `var mArg=${JSON.stringify({ attachments: [first, second], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};`;
@@ -114,20 +122,27 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
         await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct" id="point-1">${condition}<iframe data='{"jobid":"job-1"}' jobid="job-1" src="/ananas/modules/video/index.html?jobid=job-1&courseId=${id}&clazzid=200"></iframe></div>
           <div class="ans-attach-ct" id="point-2">${condition}<div id="slot-2"></div></div>`, context + open) }); return;
       }
-      const context = `var mArg=${JSON.stringify({ attachments: [attachment], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};`;
+      const nonTask = { ...makeAttachment('not-required', '非任务视频'), job: false };
+      const context = `var mArg=${JSON.stringify({ attachments: options.nonTaskVideo ? [attachment, nonTask] : [attachment], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};` + (options.crossOriginPlayer ? `window.addEventListener('message',e=>{if(e.data?.platform==='player-passed'){const att=mArg.attachments.find(a=>a.jobid===e.data.jobId);if(att)att.isPassed=true;document.querySelector('.ans-attach-ct')?.classList.add('ans-job-finished');void window.__fixturePass(e.data.jobId);top.postMessage({platform:'passed',jobId:e.data.jobId},'*')}});` : '');
       if (options.lazyTask) {
         await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct" id="lazy-point">${condition}<div id="lazy-slot"></div></div>`, `${context}document.querySelector('.ans-job-icon').addEventListener('click',()=>{if(document.getElementById('lazy-slot').children.length)return;var f=document.createElement('iframe');f.className='ans-insertvideo-online';f.setAttribute('data',JSON.stringify({jobid:'${jobId}'}));f.src='${player}';document.getElementById('lazy-slot').append(f)});`) }); return;
       }
-      await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct">${condition}<iframe data='${JSON.stringify({ jobid: jobId })}' src="${player}"></iframe></div>`, context) }); return;
+      const extra = options.nonTaskVideo ? `<div class="ans-attach-ct"><iframe data='{"jobid":"not-required"}' src="https://mooc2-ans.chaoxing.com/ananas/modules/video/index.html?jobid=not-required&courseId=${id}&clazzid=200"></iframe></div>` : '';
+      await route.fulfill({ contentType: 'text/html', body: shell(`<div class="ans-attach-ct">${condition}<iframe data='${JSON.stringify({ jobid: jobId })}' src="${player}"></iframe></div>${extra}`, context) }); return;
     }
     if (u.pathname.includes('/ananas/modules/video')) {
       const videoJob = u.searchParams.get('jobid') || jobId;
-      const mark = `const jobid='${videoJob}';const att=(parent.mArg.attachments||[]).find(a=>String(a.jobid||(a.property&&a.property._jobid))===jobid);if(att)att.isPassed=true;const f=window.frameElement;const point=f&&f.closest?f.closest('.ans-attach-ct'):null;if(point)point.classList.add('ans-job-finished');void window.__fixturePass(jobid);top.postMessage({platform:'passed',jobId:jobid},'*')`;
-      await route.fulfill({ contentType: 'text/html', body: shell(`${options.extraEmptyAudio ? '<audio></audio>' : ''}<video id="video_html5_api" muted controls src="/fixture.webm"></video>`, `const video=document.querySelector('video');let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*${options.earlyReceipt ? '.1' : '.9'}){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
+      const mark = options.crossOriginPlayer ? `parent.postMessage({platform:'player-passed',jobId:'${videoJob}'},'*')` : `const jobid='${videoJob}';const att=(parent.mArg.attachments||[]).find(a=>String(a.jobid||(a.property&&a.property._jobid))===jobid);if(att)att.isPassed=true;const f=window.frameElement;const point=f&&f.closest?f.closest('.ans-attach-ct'):null;if(point)point.classList.add('ans-job-finished');void window.__fixturePass(jobid);top.postMessage({platform:'passed',jobId:jobid},'*')`;
+      await route.fulfill({ contentType: 'text/html', body: shell(`${options.extraEmptyAudio ? '<audio></audio>' : ''}<video id="video_html5_api" muted controls ${options.delayedSource ? '' : 'src="/fixture.webm"'}></video>`, `const video=document.querySelector('video');${options.delayedSource ? "setTimeout(()=>{video.src='/fixture.webm'},2500);" : ''}let accepted=false;video.addEventListener('timeupdate',()=>{if(!accepted&&video.duration&&video.currentTime>=video.duration*${options.earlyReceipt ? '.1' : '.9'}){accepted=true;${options.noReceipt ? '' : `setTimeout(()=>{${mark}},${options.receiptDelay || 0})`}}});`) }); return;
     }
     if (options.mode === 'video' || options.mode === 'catalogue') {
       const host = options.crossOrigin ? 'https://mooc2-ans.chaoxing.com' : 'https://mooc1.chaoxing.com';
       const cardsHost = 'https://mooc1.chaoxing.com';
+      if (options.twoChapters) {
+        const chapters = `<div class="posCatalog_select posCatalog_active" id="cur10"><span class="posCatalog_name">第一章</span><i></i></div><div class="posCatalog_select" id="cur11"><span class="posCatalog_name">第二章</span><i></i></div>`;
+        const script = `const done=new Set();window.addEventListener('message',e=>{if(e.data?.platform==='passed'){done.add(e.data.jobId);for(const id of ['10','11'])if(done.has('job-'+id+'-1')&&done.has('job-'+id+'-2'))document.querySelector('#cur'+id+' i').classList.add('icon_Completed')}});document.querySelector('#cur11 .posCatalog_name').onclick=()=>{document.querySelector('#cur10').classList.remove('posCatalog_active');document.querySelector('#cur11').classList.add('posCatalog_active');document.querySelector('#iframe').src='${cardsHost}/mooc-ans/knowledge/cards?courseid=${id}&clazzid=200&knowledgeid=11'};`;
+        await route.fulfill({contentType:'text/html',body:shell(`<input id="userId" value="111" type="hidden"><div class="course-name">测试课程甲</div>${chapters}<iframe id="iframe" src="${cardsHost}/mooc-ans/knowledge/cards?courseid=${id}&clazzid=200&knowledgeid=10"></iframe>`,script)}); return;
+      }
       const chapters = options.mode === 'catalogue' ? `<div class="posCatalog_select posCatalog_active" id="cur10"><span class="posCatalog_name">第一章</span><i class="${passed.has(jobId) ? 'icon_Completed' : ''}"></i></div>` : '';
       const markChapter = options.sequence
         ? `const done=new Set();window.addEventListener('message',e=>{if(e.data?.platform==='passed'){done.add(e.data.jobId);if(done.size>=2)document.querySelector('.posCatalog_select i')?.classList.add('icon_Completed')}});`

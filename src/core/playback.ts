@@ -61,7 +61,7 @@ async function invokePlay(media: HTMLMediaElement, player: VideoJsPlayer | undef
     try {
       const result = player.play();
       if (result && typeof (result as Promise<void>).then === 'function') await result;
-      else { await sleep(250); if (player.paused()) throw new DOMException('播放器未开始播放', 'NotAllowedError'); }
+      else { await sleep(250); if (player.paused()) throw new DOMException('播放器尚未开始播放', 'AbortError'); }
       return;
     } catch (error) {
       if (classifyPlayError(error) === 'unsupported') throw error;
@@ -182,7 +182,7 @@ export async function startPlayback(media: HTMLMediaElement, options: PlaybackOp
     try {
       await invokePlay(media, player);
       await sleep(250, options.signal);
-      if (media.paused && !media.ended) throw new DOMException('播放未开始', 'NotAllowedError');
+      if (media.paused && !media.ended) throw new DOMException('播放器启动后仍处于暂停状态', 'AbortError');
       return { muted: await restoreSound(media, player, muted, options.preferMuted, options.signal, options.log) };
     } catch (error) {
       lastError = error;
@@ -196,6 +196,7 @@ export async function startPlayback(media: HTMLMediaElement, options: PlaybackOp
         await sleep(400 * interrupted, options.signal);
         continue;
       }
+      if (kind === 'interrupted') throw new Error('播放器多次中断或未开始播放，请检查媒体状态后重试');
       if (!muted) {
         muted = true; setMuted(media, player, true);
         options.log?.('浏览器拒绝有声自动播放，正在静音重试');

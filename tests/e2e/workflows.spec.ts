@@ -115,6 +115,20 @@ test('play() 首次被中断后重试完成', async ({ context }) => {
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
   expect(h.apiCalls).toHaveLength(0);
 });
+test('播放器返回成功但仍暂停时自动重试，不误报浏览器拦截', async ({ context }) => {
+  const h = await createHarness(context, { mode: 'video', resolvePausedOnce: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 30_000 }).toBe(true);
+  expect(h.state().logs.some(log => /播放被中断/.test(log.message))).toBe(true);
+  expect(h.state().logs.some(log => /被浏览器拦截/.test(log.message))).toBe(false);
+  expect(h.apiCalls).toHaveLength(0);
+});
+test('视频间歇暂停并恢复后不会累计成持续故障', async ({ context }) => {
+  test.setTimeout(55_000);
+  const h = await createHarness(context, { mode: 'video', intermittentPauses: true });
+  await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 50_000 }).toBe(true);
+  expect(h.state().logs.some(log => /媒体多次暂停或卡顿/.test(log.message))).toBe(false);
+  expect(h.apiCalls).toHaveLength(0);
+});
 test('未打开的任务点会自动打开并继续播放', async ({ context }) => {
   const h = await createHarness(context, { mode: 'catalogue', lazyTask: true });
   await expect.poll(() => Object.values(h.state().tasks).some(t => t.status === 'completed'), { timeout: 35_000 }).toBe(true);

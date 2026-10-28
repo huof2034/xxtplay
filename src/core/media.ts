@@ -61,7 +61,9 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
   const wakeUp = () => { wake(); };
   const timeupdate = () => {
     const now = performance.now(); const delta = media.currentTime - previous; const wall = (now - previousWall) / 1000;
-    if (!media.seeking && delta > 0 && delta <= Math.max(3, wall * Math.max(media.playbackRate, 1) + 1)) { watched += delta; lastMovement = Date.now(); }
+    if (!media.seeking && delta > 0 && delta <= Math.max(3, wall * Math.max(media.playbackRate, 1) + 1)) {
+      watched += delta; lastMovement = Date.now(); playFailures = 0;
+    }
     previous = media.currentTime; previousWall = now;
     if (Date.now() - lastCheckpoint > 8000) checkpoint();
     wakeUp();
@@ -95,6 +97,8 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       const blocked = adapter.blocked(); if (blocked) throw new HumanRequired(blocked);
       if (!media.isConnected) throw new Error('媒体页面已切换，已保存断点');
       if (media.error) throw new Error(`媒体加载失败（${media.error.code}），保留待办`);
+      // Background pages may receive delayed timeupdate events even while the media clock advances.
+      if (!media.paused && !media.seeking && media.currentTime > previous) timeupdate();
       watched = Math.max(watched, coverage());
       const target = watchTargetMet(requirement, { duration: media.duration, watched, ended: ended || media.ended }, course.efficiencyMode);
       if (target && Date.now() - lastVerify >= 5000) {

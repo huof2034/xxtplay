@@ -6,11 +6,19 @@ import { AutoplayBlockedError, startPlayback } from './playback';
 import { sleep, throwIfAborted } from '../utils';
 
 export class HumanRequired extends Error {}
+function playedSeconds(media: HTMLMediaElement): number {
+  let total = 0;
+  try { for (let i = 0; i < media.played.length; i++) total += Math.max(0, media.played.end(i) - media.played.start(i)); } catch { /* TimeRanges may be unavailable while loading. */ }
+  return Number.isFinite(total) ? total : 0;
+}
 export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, course: Course, repo: Repository, taskId: string, signal: AbortSignal, authorized: () => boolean, inlineQuestions: () => Promise<boolean>): Promise<string> {
   const media = job.element as HTMLMediaElement;
   if (!media || !/^(VIDEO|AUDIO)$/.test(media.tagName)) throw new Error('未找到媒体元素');
   const requirement = adapter.requirement(job);
   repo.log('info', `${course.efficiencyMode ? '效率模式' : '完整播放'}：${job.title}；${requirementLabel(requirement)}`);
+  // The platform may already count this task as passed after an earlier attempt;
+  // never replay a completed task just because its local watched counter was lost.
+  if (await adapter.verifyPassed(job)) return '平台已确认任务点通过，未重复播放';
   const config = repo.config();
   const playback = config.playback;
   const rate = Math.min(3, Math.max(1.25, Number(playback.speed) || 2));
@@ -28,6 +36,25 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
   if (playback.autoSeek) repo.log('info', '为保证实际观看时长，本版本不会自动拖动视频');
   media.muted = config.muted;
   let watched = repo.state().tasks[taskId]?.progress?.watched || 0;
+  const duration = Number.isFinite(media.duration) ? media.duration : 0;
+  if (duration > 1 && media.currentTime >= duration - 1) {
+    // The platform player often restores the last position at the very end.
+    // Replaying from zero is the only honest way to satisfy an unknown/full-view requirement.
+    try { media.currentTime = 0; repo.log('info', '视频已停在结尾但平台未确认通过，重新从头播放以补足观看时长'); }
+    catch { repo.log('warn', '播放器拒绝回到开头，按当前进度继续'); }
+  } else if (duration > 1 && media.currentTime > 0) {
+    // A resumed player already contains prior viewing; count its position as progress
+    // so a 90% resume is not treated as a brand-new video.
+    watched = Math.max(watched, media.currentTime);
+    repo.log('info', `播放器从 ${Math.floor(media.currentTime)} 秒继续，已计入此前进度`);
+  }
+  const resumeFrom = media.currentTime;
+  // `played` is the browser's own record of media ranges actually played. It survives
+  // missed timeupdate events and background throttling, unlike a delta accumulator alone.
+  const coverage = (): number => {
+    const total = resumeFrom + playedSeconds(media);
+    return Number.isFinite(duration) && duration > 0 ? Math.min(duration, total) : total;
+  };
   let previous = media.currentTime; let previousWall = performance.now();
   let lastMovement = Date.now(); let lastCheckpoint = 0; let ended = media.ended; let wake = () => {};
   let playFailures = 0; let lastVerify = 0; let verified = false;
@@ -41,6 +68,7 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
   };
   const checkpoint = () => {
     lastCheckpoint = Date.now();
+    watched = Math.max(watched, coverage());
     repo.update(s => { const task = s.tasks[taskId]; if (task) { task.updatedAt = Date.now(); task.progress = { current: media.currentTime, duration: Number.isFinite(media.duration) ? media.duration : 0, requirement, watched }; } });
   };
   const onEnded = () => { ended = true; checkpoint(); wakeUp(); };
@@ -67,13 +95,14 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
       const blocked = adapter.blocked(); if (blocked) throw new HumanRequired(blocked);
       if (!media.isConnected) throw new Error('媒体页面已切换，已保存断点');
       if (media.error) throw new Error(`媒体加载失败（${media.error.code}），保留待办`);
+      watched = Math.max(watched, coverage());
       const target = watchTargetMet(requirement, { duration: media.duration, watched, ended: ended || media.ended }, course.efficiencyMode);
       if (target && Date.now() - lastVerify >= 5000) {
         lastVerify = Date.now(); verified = await adapter.verifyPassed(job);
       }
       if (verified && target) { media.pause(); checkpoint(); return '平台任务点已确认通过'; }
       if (ended || media.ended) {
-        if (!target) throw new Error('视频已到结尾，但已记录的观看时长不足；保留待办，请检查播放进度');
+        if (!target) throw new Error(`视频已到结尾，但已记录的观看时长不足（${Math.floor(watched)}/${Math.floor(media.duration)} 秒）；保留待办，请检查播放进度`);
         for (let i = 0; i < 3; i++) { if (await adapter.verifyPassed(job)) return '完整播放后平台任务点已确认通过'; await sleep(5000, signal); }
         throw new Error('视频已完整播放，平台尚未确认通过；保留待办，不标记完成');
       }

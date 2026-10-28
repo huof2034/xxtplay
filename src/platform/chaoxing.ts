@@ -193,6 +193,23 @@ export class ChaoxingAdapter {
     if (jobId) {
       const a = this.attachmentContext().attachments.find(a => attachmentId(a) === jobId);
       if (a?.isPassed === true) return true;
+      // Some course skins update the task-point DOM but not mArg after a video ends.
+      for (const win of relatedWindows(this.win)) {
+        try {
+          const docs: Document[] = [win.document];
+          for (const frame of win.document.querySelectorAll<HTMLIFrameElement>('iframe')) {
+            try { if (frame.contentDocument) docs.push(frame.contentDocument); } catch { /* Cross-origin iframe. */ }
+          }
+          for (const doc of docs) {
+            for (const point of doc.querySelectorAll<HTMLElement>('.ans-attach-ct')) {
+              const iframe = point.querySelector('iframe');
+              const identity = `${iframe?.getAttribute('jobid') || ''} ${iframe?.getAttribute('data') || ''}`;
+              if (!identity.includes(jobId)) continue;
+              if (point.classList.contains('ans-job-finished') || point.querySelector('.icon_yiwanc,.icon_Completed,.icon_completed')) return true;
+            }
+          }
+        } catch { /* Cross-origin window. */ }
+      }
     }
     if (kind === 'quiz' || kind === 'exam') {
       return [...this.doc.querySelectorAll('.testTit_status_complete,.work-finish,.submit-success,.exam-success')].some(visible) ||

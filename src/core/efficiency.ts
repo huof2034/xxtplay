@@ -28,7 +28,9 @@ export function requiredSeconds(requirement: WatchRequirement, duration: number)
 }
 export function watchTargetMet(requirement: WatchRequirement, progress: { duration: number; watched: number; ended: boolean }, efficient: boolean): boolean {
   if (!efficient || !requirement.known) {
-    return progress.ended && Number.isFinite(progress.duration) && progress.duration > 0 && progress.watched >= Math.max(0, progress.duration - 0.5);
+    // Full playback is judged from the browser's played ranges. A small tolerance
+    // covers the final timeupdate boundary without treating a seek as viewing.
+    return progress.ended && Number.isFinite(progress.duration) && progress.duration > 0 && progress.watched >= Math.max(0, progress.duration - 2);
   }
   const target = requiredSeconds(requirement, progress.duration);
   return target !== undefined && progress.watched >= target;

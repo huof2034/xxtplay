@@ -205,7 +205,10 @@ export class ChaoxingAdapter {
               const iframe = point.querySelector('iframe');
               const identity = `${iframe?.getAttribute('jobid') || ''} ${iframe?.getAttribute('data') || ''}`;
               if (!identity.includes(jobId)) continue;
-              if (point.classList.contains('ans-job-finished') || point.querySelector('.icon_yiwanc,.icon_Completed,.icon_completed')) return true;
+              const icon = point.querySelector<HTMLElement>('.ans-job-icon');
+              const label = icon?.getAttribute('aria-label') || icon?.title || '';
+              // "任务点未完成" contains "完成"; never treat the negative label as passed.
+              if (point.classList.contains('ans-job-finished') || (/完成|通过/.test(label) && !/未完成|未通过/.test(label))) return true;
             }
           }
         } catch { /* Cross-origin window. */ }

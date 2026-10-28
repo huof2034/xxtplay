@@ -106,7 +106,7 @@ export async function createHarness(context: BrowserContext, options: HarnessOpt
       const makeAttachment = (job: string, name: string) => ({ job: true, isPassed: passed.has(job), jobid: job, property: { _jobid: job, module: 'insertvideo', name, mid: 'm1', fastforward: options.seekAllowed ? 'true' : 'false', doublespeed: options.speedAllowed ? 1 : 0 } });
       const attachment = makeAttachment(jobId, '测试视频');
       const player = `/ananas/modules/video/index.html?jobid=${jobId}&courseId=${id}&clazzid=200`;
-      const condition = `<div class="ans-job-icon"><div class="task-condition">${options.requirement ?? '完成条件 观看时长需 ≥ 总时长的 90% (未完成任务点前, 当前视频不可拖拽)'}</div></div>`;
+      const condition = `<div class="ans-job-icon" aria-label="任务点未完成"><div class="task-condition">${options.requirement ?? '完成条件 观看时长需 ≥ 总时长的 90% (未完成任务点前, 当前视频不可拖拽)'}</div></div>`;
       if (options.sequence) {
         const first = makeAttachment('job-1', '测试视频一'); const second = makeAttachment('job-2', '测试视频二');
         const context = `var mArg=${JSON.stringify({ attachments: [first, second], defaults: { userid: '111', courseid: id, clazzId: '200' }, coursename: '测试课程甲' })};`;

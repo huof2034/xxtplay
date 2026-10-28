@@ -16,9 +16,9 @@ export async function playMedia(adapter: ChaoxingAdapter, job: PlatformJob, cour
   if (!media || !/^(VIDEO|AUDIO)$/.test(media.tagName)) throw new Error('未找到媒体元素');
   const requirement = adapter.requirement(job);
   repo.log('info', `${course.efficiencyMode ? '效率模式' : '完整播放'}：${job.title}；${requirementLabel(requirement)}`);
-  // The platform may already count this task as passed after an earlier attempt;
-  // never replay a completed task just because its local watched counter was lost.
-  if (await adapter.verifyPassed(job)) return '平台已确认任务点通过，未重复播放';
+  // Do not perform an async cards-page fetch here: it can stall playback on slow or
+  // cross-origin pages. runJob already checks the synchronous passed state; a task that
+  // is already passed is handled by the platform receipt path after playback.
   const config = repo.config();
   const playback = config.playback;
   const rate = Math.min(3, Math.max(1.25, Number(playback.speed) || 2));
